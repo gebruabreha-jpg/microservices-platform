@@ -16,30 +16,63 @@ NGINX (API Gateway)
   └── Notification Service → RabbitMQ
 ```
 
-## Repositories
+## Directory Structure
 
-| Repository | Description |
-|-----------|-------------|
-| `system-design-infra/` | Shared infrastructure (PostgreSQL, Redis, NGINX, Prometheus, Grafana) |
-| `order-service/` | Order management (create, list, cache) |
-| `inventory-service/` | Inventory reservation |
-| `payment-service/` | Payment processing |
-| `notification-service/` | Notification dispatch |
-| `shared-python-lib/` | Shared utilities across services |
+```
+microservices-platform/
+├── platform/                    # Infrastructure services
+│   ├── nginx/                   # NGINX API Gateway
+│   ├── postgres/                # PostgreSQL database
+│   ├── redis/                   # Redis cache
+│   ├── kafka/                   # Apache Kafka
+│   ├── rabbitmq/                # RabbitMQ message broker
+│   ├── prometheus/              # Metrics collection
+│   ├── grafana/                 # Visualization dashboard
+│   ├── loki/                    # Log aggregation
+│   ├── tempo/                   # Distributed tracing
+│   ├── otel-collector/          # OpenTelemetry collector
+│   ├── node-exporter/           # Node metrics exporter
+│   ├── cadvisor/                # Container metrics
+│   ├── kafka-ui/                # Kafka management UI
+│   ├── redis-insight/           # Redis management UI
+│   ├── pgadmin/                 # PostgreSQL management UI
+│   ├── mailhog/                 # Email testing
+│   ├── docker-compose.yml       # Full platform stack
+│   └── scripts/                 # Start/stop/reset/seed scripts
+├── kubernetes/                  # Kubernetes manifests
+│   ├── helm/                    # Helm charts
+│   ├── ingress/                 # Ingress controllers
+│   ├── gateway-api/             # Gateway API configs
+│   ├── argocd/                  # GitOps deployment
+│   ├── cert-manager/            # TLS certificates
+│   ├── external-secrets/        # External secrets
+│   └── service-mesh/            # Istio/Linkerd configs
+├── infrastructure/
+│   └── terraform/               # Infrastructure as Code
+└── services/
+    ├── order-service/           # Order management
+    ├── inventory-service/       # Inventory reservation
+    ├── payment-service/         # Payment processing
+    ├── notification-service/    # Notification dispatch
+    ├── traffic-generator/       # Locust load testing
+    └── shared-python-lib/       # Shared utilities
+```
 
 ## Quick start
 
-### Infrastructure
+### Full Platform
 
 ```bash
-cd system-design-infra
+cd platform
 docker compose up -d
 ```
 
-### Order Service
+This starts PostgreSQL, Redis, Kafka, RabbitMQ, NGINX, Prometheus, Grafana, Loki, Tempo, and the OpenTelemetry collector.
+
+### Individual Services
 
 ```bash
-cd order-service
+cd services/order-service
 docker compose up -d
 ```
 
@@ -50,8 +83,14 @@ docker compose up -d
 | PostgreSQL | 5432 | Primary database |
 | Redis | 6379 | Cache |
 | NGINX | 80 | API Gateway |
+| Kafka | 9092 | Event streaming |
+| Kafka REST | 8082 | Kafka HTTP proxy |
+| RabbitMQ | 5672 | Message queue |
 | Prometheus | 9090 | Metrics |
 | Grafana | 3000 | Dashboard |
+| Loki | 3100 | Log aggregation |
+| Tempo | 3200 | Distributed tracing |
+| OpenTelemetry | 4317 | Trace/metric ingestion |
 
 ## Concepts demonstrated
 
@@ -155,34 +194,6 @@ Locust helps validate:
 - Retry behavior
 - Distributed tracing
 
-Example scenario:
-
-```
-500 Virtual Users
-
-      │
-      ▼
-Create Orders
-      │
-      ▼
-API Gateway
-      │
-      ▼
-Order Service
-      │
-      ▼
-Kafka
-      │
-      ▼
-Inventory Service
-      │
-      ▼
-Payment Service
-      │
-      ▼
-Notification Service
-```
-
 ### k6 (Optional)
 
 k6 is intended for automated performance testing.
@@ -266,3 +277,31 @@ For this project:
 - **k6** can be added later to automate performance testing as part of the CI/CD pipeline.
 
 This combination provides a practical workflow that reflects how modern platform engineering teams develop, validate, and operate distributed systems.
+
+## Suggested Learning Order
+
+Build incrementally — don't install everything on day one:
+
+1. Docker Compose
+2. PostgreSQL
+3. Redis
+4. NGINX
+5. Prometheus
+6. Grafana
+7. Kafka
+8. RabbitMQ
+9. Locust
+10. OpenTelemetry
+11. Loki
+12. Tempo (or Jaeger)
+13. Kubernetes
+14. Helm
+15. Argo CD
+16. Terraform (or OpenTofu)
+17. MinIO
+18. cert-manager
+19. HashiCorp Vault
+20. Istio or Linkerd
+21. Chaos Mesh
+
+This progression mirrors how many organizations evolve their platforms: start with core infrastructure and observability, then add orchestration, automation, security, and advanced traffic management.
