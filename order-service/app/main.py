@@ -4,6 +4,7 @@ import psycopg2
 import os
 import json
 import requests
+from shared.models import Order
 
 app = FastAPI()
 
@@ -38,7 +39,7 @@ def get_db():
 def publish_kafka_event(topic, event):
     try:
         requests.post(
-            os.getenv("KAFKA_REST_URL", "http://kafka:8082/topics/" + topic),
+            os.getenv("KAFKA_REST_URL", "http://kafka-rest:8082/topics/" + topic),
             json=event,
             timeout=5,
         )
@@ -72,18 +73,18 @@ def list_orders():
 
 
 @app.post("/orders")
-def create_order(order: dict):
+def create_order(order: Order):
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO orders (customer_id, product_id, quantity, amount, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-        (order.get("customer_id"), order.get("product_id"), order.get("quantity"), order.get("amount"), "created"),
+        (order.customer_id, order.product_id, order.quantity, order.amount, "created"),
     )
     order_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
 
-    event = {"order_id": order_id, "customer_id": order.get("customer_id"), "product_id": order.get("product_id"), "quantity": order.get("quantity"), "amount": order.get("amount"), "status": "created"}
+    event = {"order_id": order_id, "customer_id": order.customer_id, "product_id": order.product_id, "quantity": order.quantity, "amount": order.amount, "status": "created"}
     publish_kafka_event("orders", event)
 
     r = get_redis()

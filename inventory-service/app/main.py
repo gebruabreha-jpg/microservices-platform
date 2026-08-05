@@ -2,7 +2,7 @@ from fastapi import FastAPI
 import psycopg2
 import os
 import json
-import requests
+from shared.models import InventoryItem
 
 app = FastAPI()
 
@@ -43,12 +43,12 @@ def list_inventory():
 
 
 @app.post("/inventory/reserve")
-def reserve_inventory(item: dict):
+def reserve_inventory(item: InventoryItem):
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
         "UPDATE inventory SET reserved = reserved + %s WHERE product_id = %s AND quantity - reserved >= %s RETURNING id",
-        (item.get("quantity"), item.get("product_id"), item.get("quantity")),
+        (item.quantity, item.product_id, item.quantity),
     )
     result = cur.fetchone()
     conn.commit()

@@ -14,7 +14,7 @@ class TestHealth:
     def test_health_check(self, client):
         response = client.get("/health")
         assert response.status_code == 200
-        assert response.get_json()["service"] == "payment-service"
+        assert response.json()["service"] == "payment-service"
 
 
 class TestProcessPayment:
@@ -26,7 +26,6 @@ class TestProcessPayment:
             response = client.post(
                 "/payments",
                 json={"order_id": 1, "amount": 59.98},
-                content_type="application/json",
             )
         assert response.status_code == 200
-        assert response.get_json()["status"] == "processing"
+        assert response.json()["status"] == "processing"

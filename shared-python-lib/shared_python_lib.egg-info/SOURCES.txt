@@ -1,0 +1,12 @@
+README.md
+setup.py
+shared/__init__.py
+shared/config.py
+shared/logger.py
+shared/models.py
+shared/telemetry.py
+shared_python_lib.egg-info/PKG-INFO
+shared_python_lib.egg-info/SOURCES.txt
+shared_python_lib.egg-info/dependency_links.txt
+shared_python_lib.egg-info/requires.txt
+shared_python_lib.egg-info/top_level.txt

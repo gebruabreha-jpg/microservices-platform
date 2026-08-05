@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: shared-python-lib
+Version: 0.1.0
+Requires-Dist: pydantic>=2.0
+Requires-Dist: opentelemetry-api>=1.20.0
+Requires-Dist: opentelemetry-sdk>=1.20.0
+Requires-Dist: opentelemetry-exporter-otlp-proto-grpc>=1.20.0
+Dynamic: requires-dist

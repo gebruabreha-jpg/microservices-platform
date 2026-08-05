@@ -2,10 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY inventory-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app/ ./app/
+COPY inventory-service/app/ ./app/
+COPY shared-python-lib/shared ./shared
 
 EXPOSE 8080
 

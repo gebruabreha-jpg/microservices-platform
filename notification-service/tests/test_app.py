@@ -13,7 +13,7 @@ class TestHealth:
     def test_health_check(self, client):
         response = client.get("/health")
         assert response.status_code == 200
-        assert response.get_json()["service"] == "notification-service"
+        assert response.json()["service"] == "notification-service"
 
 
 class TestSendNotification:
@@ -21,7 +21,6 @@ class TestSendNotification:
         response = client.post(
             "/notifications",
             json={"type": "order_confirmed", "order_id": 1},
-            content_type="application/json",
         )
         assert response.status_code == 200
-        assert response.get_json()["status"] == "queued"
+        assert response.json()["status"] == "queued"

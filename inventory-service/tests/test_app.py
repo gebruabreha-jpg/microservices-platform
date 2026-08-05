@@ -14,7 +14,7 @@ class TestHealth:
     def test_health_check(self, client):
         response = client.get("/health")
         assert response.status_code == 200
-        assert response.get_json()["service"] == "inventory-service"
+        assert response.json()["service"] == "inventory-service"
 
 
 class TestReserveInventory:
@@ -26,10 +26,9 @@ class TestReserveInventory:
             response = client.post(
                 "/inventory/reserve",
                 json={"product_id": 1, "quantity": 2},
-                content_type="application/json",
             )
         assert response.status_code == 200
-        assert response.get_json()["status"] == "reserved"
+        assert response.json()["status"] == "reserved"
 
     def test_reserve_insufficient(self, client):
         with patch("app.main.get_db") as mock_db:
@@ -39,6 +38,5 @@ class TestReserveInventory:
             response = client.post(
                 "/inventory/reserve",
                 json={"product_id": 1, "quantity": 999},
-                content_type="application/json",
             )
         assert response.status_code == 400

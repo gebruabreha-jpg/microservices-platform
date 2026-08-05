@@ -2,7 +2,8 @@ from fastapi import FastAPI
 import psycopg2
 import os
 import json
-import requests
+import pika
+from shared.models import Payment
 
 app = FastAPI()
 
@@ -24,12 +25,25 @@ def get_db():
 
 def queue_rabbitmq_job(queue, message):
     try:
-        requests.post(
-            os.getenv("RABBITMQ_REST_URL", "http://rabbitmq:15672/api/queues/" + queue),
-            json=message,
-            auth=(os.getenv("RABBITMQ_USER", "admin"), os.getenv("RABBITMQ_PASS", "secret")),
-            timeout=5,
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(
+                host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
+                port=5672,
+                credentials=pika.PlainCredentials(
+                    os.getenv("RABBITMQ_USER", "admin"),
+                    os.getenv("RABBITMQ_PASS", "secret"),
+                ),
+            )
         )
+        channel = connection.channel()
+        channel.queue_declare(queue=queue, durable=True)
+        channel.basic_publish(
+            exchange="",
+            routing_key=queue,
+            body=json.dumps(message),
+            properties=pika.BasicProperties(delivery_mode=2),
+        )
+        connection.close()
     except Exception:
         pass
 
@@ -55,17 +69,17 @@ def list_payments():
 
 
 @app.post("/payments")
-def process_payment(payment: dict):
+def process_payment(payment: Payment):
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO payments (order_id, amount, status) VALUES (%s, %s, %s) RETURNING id",
-        (payment.get("order_id"), payment.get("amount"), "processing"),
+        (payment.order_id, payment.amount, "processing"),
     )
     payment_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
 
-    queue_rabbitmq_job("notifications", {"type": "payment_received", "payment_id": payment_id, "order_id": payment.get("order_id")})
+    queue_rabbitmq_job("notifications", {"type": "payment_received", "payment_id": payment_id, "order_id": payment.order_id})
 
     return {"id": payment_id, "status": "processing"}
