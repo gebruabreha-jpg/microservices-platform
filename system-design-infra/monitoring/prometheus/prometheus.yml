@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'order-service'
+    static_configs:
+      - targets: ['order-service:8080']
+  - job_name: 'inventory-service'
+    static_configs:
+      - targets: ['inventory-service:8080']
+  - job_name: 'payment-service'
+    static_configs:
+      - targets: ['payment-service:8080']
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service:8080']
