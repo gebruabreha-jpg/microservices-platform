@@ -1,5 +1,27 @@
+Network:-
 Top-level networks: — defines the network with driver: bridge
 Per-service networks: — each service joins the platform-net network
+
+storage/volume:-
+
+
+
+how install on your machine:-
+Required:-
+Docker Desktop — all services run in containers via 3 docker-compose files (platform/docker-compose.yml, services/docker-compose.yml, traffic-generator/docker-compose.yml)
+
+Python 3.12+ — only needed to run unit tests locally (the services run fine inside Docker without it).
+
+Python packages (only for local testing, Docker handles these inside containers):
+fastapi, uvicorn — web framework for all services
+psycopg2-binary — PostgreSQL driver
+redis — Redis client (order-service)
+requests — HTTP client (order-service, payment-service)
+pika — RabbitMQ client (payment-service, notification-service)
+pydantic — data validation (shared-python-lib)
+locust — load testing (traffic-generator)
+You don't need to manually install the Python packages unless you want to run tests locally — just install Docker Desktop and run docker compose up -d in each of the three directories (platform, services, traffic-generator).
+
 
 
 # Order Management System
