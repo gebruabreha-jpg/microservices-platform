@@ -20,6 +20,7 @@ requests — HTTP client (order-service, payment-service)
 pika — RabbitMQ client (payment-service, notification-service)
 pydantic — data validation (shared-python-lib)
 locust — load testing (traffic-generator)
+
 You don't need to manually install the Python packages unless you want to run tests locally — just install Docker Desktop and run docker compose up -d in each of the three directories (platform, services, traffic-generator).
 
 
