@@ -1,5 +1,9 @@
 version: '3.8'
 
+networks:
+  platform-net:
+    external: true
+
 services:
   order-service:
     build:
@@ -16,10 +20,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       KAFKA_REST_URL: http://kafka-rest:8082
-    depends_on:
-      - postgres
-      - redis
-      - kafka-rest
+    networks:
+      - platform-net
 
   inventory-service:
     build:
@@ -33,8 +35,8 @@ services:
       POSTGRES_DB: appdb
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: secret
-    depends_on:
-      - postgres
+    networks:
+      - platform-net
 
   payment-service:
     build:
@@ -51,9 +53,8 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: admin
       RABBITMQ_PASS: secret
-    depends_on:
-      - postgres
-      - rabbitmq
+    networks:
+      - platform-net
 
   notification-service:
     build:
@@ -70,20 +71,9 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: admin
       RABBITMQ_PASS: secret
-    depends_on:
-      - postgres
-      - rabbitmq
+    networks:
+      - platform-net
 
-  traffic-generator:
-    build:
-      context: ..
-      dockerfile: services/traffic-generator/Dockerfile
-    ports:
-      - "8089:8089"
-    environment:
-      LOCUST_HOST: http://nginx
-      LOCUST_USERS: "${LOCUST_USERS:-100}"
-      LOCUST_SPAWN_RATE: "${LOCUST_SPAWN_RATE:-10}"
-      LOCUST_RUN_TIME: "${LOCUST_RUN_TIME:-5m}"
-    depends_on:
-      - nginx
+networks:
+  platform-net:
+    external: true

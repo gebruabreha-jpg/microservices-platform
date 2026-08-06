@@ -76,15 +76,39 @@ cd services
 docker compose up -d
 ```
 
-This starts order-service, inventory-service, payment-service, notification-service, and traffic-generator.
+This starts order-service, inventory-service, payment-service, and notification-service.
 
-### Start everything (infrastructure + services)
+### Start traffic generator
+
+```bash
+cd traffic-generator
+docker compose up -d
+```
+
+This starts Locust with its own embedded NGINX and all application services. Open http://localhost:8089 to access the Locust web UI.
+
+### Start everything (recommended)
 
 ```bash
 cd platform
 docker compose up -d
 cd services
 docker compose up -d
+cd traffic-generator
+docker compose up -d
+```
+
+Start infrastructure first, then services, then the traffic generator.
+
+### Stop everything
+
+```bash
+cd traffic-generator
+docker compose down
+cd services
+docker compose down
+cd platform
+docker compose down
 ```
 
 ### Stop services
@@ -98,6 +122,13 @@ docker compose down
 
 ```bash
 cd platform
+docker compose down
+```
+
+### Stop traffic generator
+
+```bash
+cd traffic-generator
 docker compose down
 ```
 
