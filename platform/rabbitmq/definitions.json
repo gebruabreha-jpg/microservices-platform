@@ -1,0 +1,11 @@
+﻿{
+  "queues": [
+    {"name": "notifications", "durable": true}
+  ],
+  "exchanges": [
+    {"name": "notifications", "type": "direct", "durable": true}
+  ],
+  "bindings": [
+    {"source": "notifications", "destination": "notifications", "routing_key": "notifications"}
+  ]
+}

@@ -1,7 +1,0 @@
-﻿version: '3.8'
-
-services:
-  redis-insight:
-    image: redis/redisinsight:latest
-    ports:
-      - "5540:5540"
