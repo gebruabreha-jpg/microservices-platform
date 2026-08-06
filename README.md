@@ -1,31 +1,5 @@
-Network:-
-Top-level networks: — defines the network with driver: bridge
-Per-service networks: — each service joins the platform-net network
-
-storage/volume:-
-
-
-
-how install on your machine:-
-Required:-
-Docker Desktop — all services run in containers via 3 docker-compose files (platform/docker-compose.yml, services/docker-compose.yml, traffic-generator/docker-compose.yml)
-
-Python 3.12+ — only needed to run unit tests locally (the services run fine inside Docker without it).
-
-Python packages (only for local testing, Docker handles these inside containers):
-fastapi, uvicorn — web framework for all services
-psycopg2-binary — PostgreSQL driver
-redis — Redis client (order-service)
-requests — HTTP client (order-service, payment-service)
-pika — RabbitMQ client (payment-service, notification-service)
-pydantic — data validation (shared-python-lib)
-locust — load testing (traffic-generator)
-
-You don't need to manually install the Python packages unless you want to run tests locally — just install Docker Desktop and run docker compose up -d in each of the three directories (platform, services, traffic-generator).
-
-
-
 # Order Management System
+
 A distributed order management system demonstrating platform and distributed systems patterns.
 
 ## Architecture
@@ -63,8 +37,15 @@ microservices-platform/
 │   ├── redis-insight/           # Redis management UI
 │   ├── pgadmin/                 # PostgreSQL management UI
 │   ├── mailhog/                 # Email testing
-│   ├── docker-compose.yml       # Full platform stack
+│   ├── docker-compose.yml       # Infrastructure stack
 │   └── scripts/                 # Start/stop/reset/seed scripts
+├── services/
+│   ├── order-service/           # Order management
+│   ├── inventory-service/       # Inventory reservation
+│   ├── payment-service/         # Payment processing
+│   ├── notification-service/    # Notification dispatch
+│   ├── traffic-generator/       # Locust load testing
+│   └── shared-python-lib/       # Shared utilities
 ├── kubernetes/                  # Kubernetes manifests
 │   ├── helm/                    # Helm charts
 │   ├── ingress/                 # Ingress controllers
@@ -73,18 +54,16 @@ microservices-platform/
 │   ├── cert-manager/            # TLS certificates
 │   ├── external-secrets/        # External secrets
 │   └── service-mesh/            # Istio/Linkerd configs
-├── infrastructure/
-│   └── terraform/               # Infrastructure as Code
-└── services/
-    ├── order-service/           # Order management
-    ├── inventory-service/       # Inventory reservation
-    ├── payment-service/         # Payment processing
-    ├── notification-service/    # Notification dispatch
-    ├── traffic-generator/       # Locust load testing
-    └── shared-python-lib/       # Shared utilities
+└── infrastructure/
+    └── terraform/               # Infrastructure as Code
 ```
 
-## Quick start
+## Prerequisites
+
+- **Docker Desktop** — all services run in containers via 3 docker-compose files
+- **Python 3.12+** — only needed to run unit tests locally (Docker handles dependencies inside containers)
+
+## Quick Start
 
 ### Start infrastructure
 
