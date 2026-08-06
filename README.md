@@ -60,61 +60,79 @@ microservices-platform/
 
 ## Quick start
 
-### Start the entire platform
+### Start infrastructure
 
 ```bash
 cd platform
 docker compose up -d
 ```
 
-This starts all infrastructure services (PostgreSQL, Redis, Kafka, RabbitMQ, NGINX, Prometheus, Grafana, Loki, Tempo, OpenTelemetry) and all application services (order, inventory, payment, notification) plus the Locust traffic generator.
+This starts PostgreSQL, Redis, Kafka, RabbitMQ, NGINX, Prometheus, Grafana, Loki, Tempo, and OpenTelemetry.
 
-### Stop everything
+### Start all application services
+
+```bash
+cd services
+docker compose up -d
+```
+
+This starts order-service, inventory-service, payment-service, notification-service, and traffic-generator.
+
+### Start everything (infrastructure + services)
+
+```bash
+cd platform
+docker compose up -d
+cd services
+docker compose up -d
+```
+
+### Stop services
+
+```bash
+cd services
+docker compose down
+```
+
+### Stop infrastructure
 
 ```bash
 cd platform
 docker compose down
 ```
 
-### Restart everything
+### Restart services
 
 ```bash
-cd platform
+cd services
 docker compose restart
 ```
 
 ### Check status
 
 ```bash
-cd platform
+cd services
 docker compose ps
 ```
 
 ### Follow logs (all services)
 
 ```bash
-cd platform
+cd services
 docker compose logs -f
 ```
 
 ### Follow logs (one service)
 
 ```bash
-cd platform
-docker compose logs -f kafka
-```
-
-### Start individual services only
-
-```bash
-cd platform
-docker compose up -d postgres redis nginx
+cd services
+docker compose logs -f order-service
 ```
 
 ### Rebuild a service
 
 ```bash
-cd platform
+cd services
 docker compose build order-service
 docker compose up -d order-service
 ```
