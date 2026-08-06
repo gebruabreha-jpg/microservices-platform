@@ -1,5 +1,8 @@
-# Order Management System
+Top-level networks: — defines the network with driver: bridge
+Per-service networks: — each service joins the platform-net network
 
+
+# Order Management System
 A distributed order management system demonstrating platform and distributed systems patterns.
 
 ## Architecture
