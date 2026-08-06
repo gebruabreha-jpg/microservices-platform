@@ -1,6 +1,6 @@
 import random
 from locust import task, between
-from locust.contrib.fasthttp import FastHttpUser
+from locust import FastHttpUser
 
 
 class MixedUser(FastHttpUser):

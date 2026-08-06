@@ -1,7 +1,7 @@
 import random
 import time
-from locust import events
-from locust.contrib.fasthttp import FastHttpUser
+from locust import events, task, between
+from locust import FastHttpUser
 
 
 API_BASE = "http://nginx"
