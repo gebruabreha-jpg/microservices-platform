@@ -88,7 +88,7 @@ cd traffic-generator
 docker compose up -d
 ```
 
-This starts Locust with its own embedded NGINX and all application services. Open http://localhost:8089 to access the Locust web UI.
+This starts Locust for load testing against the running services. Make sure the platform and services are already running. Open http://localhost:8089 to access the Locust web UI.
 
 ### Start everything (recommended)
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import psycopg2
 import os
 import json
@@ -54,5 +54,5 @@ def reserve_inventory(item: InventoryItem):
     conn.commit()
     cur.close()
     if result is None:
-        return {"error": "Insufficient inventory"}, 400
+        raise HTTPException(status_code=400, detail="Insufficient inventory")
     return {"id": result[0], "status": "reserved"}

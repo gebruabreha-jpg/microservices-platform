@@ -1,9 +1,5 @@
 version: '3.8'
 
-networks:
-  platform-net:
-    external: true
-
 services:
   order-service:
     build:
