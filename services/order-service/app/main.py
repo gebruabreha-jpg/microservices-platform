@@ -78,13 +78,13 @@ def create_order(order: Order):
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO orders (customer_id, product_id, quantity, amount, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-        (order.customer_id, order.product_id, order.quantity, order.amount, "created"),
+        (order.customer_id, order.product_id, order.quantity, order.amount, order.status),
     )
     order_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
 
-    event = {"order_id": order_id, "customer_id": order.customer_id, "product_id": order.product_id, "quantity": order.quantity, "amount": order.amount, "status": "created"}
+    event = {"order_id": order_id, "customer_id": order.customer_id, "product_id": order.product_id, "quantity": order.quantity, "amount": order.amount, "status": order.status}
     publish_kafka_event("orders", event)
 
     r = get_redis()

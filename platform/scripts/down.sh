@@ -1,4 +1,4 @@
 ﻿#!/bin/bash
-cd ""
+cd "$(dirname "$0")/.."
 docker compose down
 echo "All platform services stopped."

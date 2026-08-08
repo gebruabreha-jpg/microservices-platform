@@ -16,11 +16,8 @@ class TestHealth:
         assert response.json()["service"] == "notification-service"
 
 
-class TestSendNotification:
-    def test_notification_queued(self, client):
-        response = client.post(
-            "/notifications",
-            json={"type": "order_confirmed", "order_id": 1},
-        )
+class TestMetrics:
+    def test_metrics_returns_json(self, client):
+        response = client.get("/metrics")
         assert response.status_code == 200
-        assert response.json()["status"] == "queued"
+        assert response.json()["service"] == "notification-service"

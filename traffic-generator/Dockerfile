@@ -2,11 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /traffic-generator
 
-COPY traffic-generator/requirements.txt .
+COPY services/traffic-generator/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY traffic-generator/locustfile.py .
-COPY traffic-generator/scenarios/ ./scenarios/
+COPY services/traffic-generator/locustfile.py .
+COPY services/traffic-generator/scenarios/ ./scenarios/
 
 EXPOSE 8089
 

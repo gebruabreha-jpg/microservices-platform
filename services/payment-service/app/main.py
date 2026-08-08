@@ -3,6 +3,8 @@ import psycopg2
 import os
 import json
 import pika
+import threading
+from kafka import KafkaConsumer
 from shared.models import Payment
 
 app = FastAPI()
@@ -46,6 +48,44 @@ def queue_rabbitmq_job(queue, message):
         connection.close()
     except Exception:
         pass
+
+
+def create_payment_from_event(event):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO payments (order_id, amount, status) VALUES (%s, %s, %s) RETURNING id",
+            (event.get("order_id"), event.get("amount", 0), "processing"),
+        )
+        payment_id = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        queue_rabbitmq_job("notifications", {"type": "payment_received", "payment_id": payment_id, "order_id": event.get("order_id")})
+    except Exception:
+        pass
+
+
+def start_kafka_consumer():
+    try:
+        consumer = KafkaConsumer(
+            "orders",
+            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
+            group_id="payment-service",
+            auto_offset_reset="earliest",
+            enable_auto_commit=True,
+            value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+        )
+        for message in consumer:
+            event = message.value
+            if event.get("status") == "created":
+                create_payment_from_event(event)
+    except Exception:
+        pass
+
+
+consumer_thread = threading.Thread(target=start_kafka_consumer, daemon=True)
+consumer_thread.start()
 
 
 @app.get("/health")
