@@ -10,4 +10,4 @@ COPY traffic-generator/scenarios/ ./scenarios/
 
 EXPOSE 8089
 
-CMD ["locust", "-f", "locustfile.py", "--host", "http://nginx", "--web-port", "8089", "--bind-host", "0.0.0.0"]
+CMD ["locust", "-f", "locustfile.py", "--host", "http://nginx", "--web-port", "8089", "--web-host", "0.0.0.0"]

@@ -16,6 +16,35 @@ NGINX (API Gateway)
   └── Notification Service → RabbitMQ
 ```
 
+## Order Flow Sequence
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant N as NGINX Gateway
+    participant O as Order Service
+    participant PG as PostgreSQL
+    participant R as Redis
+    participant K as Kafka
+    participant P as Payment Service
+    participant MQ as RabbitMQ
+    participant N2 as Notification Service
+
+    C->>N: POST /orders
+    N->>O: proxy_pass
+    O->>PG: INSERT INTO orders
+    O->>R: SET order:<id>
+    O->>K: publish order_created event
+    O-->>N: {"id": 1, "status": "created"}
+    N-->>C: 200 OK
+
+    K->>P: consume order_created
+    P->>PG: INSERT INTO payments
+    P->>MQ: queue notification task
+    MQ->>N2: consume notification
+    N2-->>MQ: ACK
+```
+
 ## Directory Structure
 
 ```
