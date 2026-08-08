@@ -49,8 +49,3 @@ def metrics():
 @app.post("/notifications")
 def send_notification(notification: dict):
     return {"id": 1, "status": "queued", "type": notification.get("type")}
-
-
-@app.post("/notifications")
-def send_notification(notification: dict):
-    return {"id": 1, "status": "queued", "type": notification.get("type")}
