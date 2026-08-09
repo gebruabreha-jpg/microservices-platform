@@ -48,6 +48,7 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: admin
       RABBITMQ_PASS: secret
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     networks:
       - platform-net
 
