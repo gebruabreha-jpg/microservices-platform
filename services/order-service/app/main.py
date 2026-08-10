@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import router
+from app.routes import router as order-router
 
 #FastAPI app + router includes
 app = FastAPI(title="order-service")
