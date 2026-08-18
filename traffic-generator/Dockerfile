@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY locustfile.py .
-COPY scenarios/ ./scenarios/
+COPY traffic-generator/scenarios/ ./scenarios/
 
 EXPOSE 8089
 
