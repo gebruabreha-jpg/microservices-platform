@@ -28,3 +28,27 @@ If you convert to async, every layer needs changes:-
 
 compose up -d --build vs compose up -d :-
 When you run docker compose up, Docker checks if an image already exists. If it does, it skips building and just spins up a container from that old image.To make sure Docker rebuilds your image whenever you change your code or dependencies, use the --build flag:docker compose up -d --build
+
+
+ Locust-based load testing tool for the platform:=
+Deployment & Run:-
+
+Docker Compose: cd traffic-generator && docker compose up -d builds the image from traffic-generator/Dockerfile (Python 3.12 + Locust) and starts the locust service on port 8089. It joins the existing platform-net network so it can reach services via http://nginx.
+
+Standalone: locust -f locustfile.py --host http://nginx --web-port 8089
+
+
+Headless/CI: locust -f locustfile.py --host http://nginx --users 500 --spawn-rate 50 --run-time 10m --headless --csv results/locust_results --html results/report.html
+Configuration is driven by env vars: LOCUST_HOST, LOCUST_USERS, LOCUST_SPAWN_RATE, LOCUST_RUN_TIME, LOCUST_MODE.
+
+
+Core files:
+
+traffic-generator/locustfile.py — Main Locust file defining 4 user classes: OrderUser, PaymentUser, NotificationUser, and MixedUser
+traffic-generator/requirements.txt — Python dependencies
+traffic-generator/locust.conf — Locust configuration
+traffic-generator/Dockerfile — Container image (Python 3.12 + Locust)
+traffic-generator/docker-compose.yml — Service definition (port 8089, connects to platform-net)
+
+
+runs Locust and targets http://nginx, which resolves to the main platform's nginx gateway
