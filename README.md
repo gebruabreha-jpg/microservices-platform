@@ -11,7 +11,6 @@ Client
 NGINX (API Gateway)
   │
   ├── Order Service      → PostgreSQL + Redis + Kafka
-  ├── Inventory Service  → PostgreSQL + Kafka
   ├── Payment Service    → PostgreSQL + RabbitMQ
   └── Notification Service → RabbitMQ
 ```
@@ -70,7 +69,6 @@ microservices-platform/
 │   └── scripts/                 # Start/stop/reset/seed scripts
 ├── services/
 │   ├── order-service/           # Order management
-│   ├── inventory-service/       # Inventory reservation
 │   ├── payment-service/         # Payment processing
 │   ├── notification-service/    # Notification dispatch
 │   ├── traffic-generator/       # Locust load testing
@@ -110,7 +108,7 @@ cd services
 docker compose up -d
 ```
 
-This starts order-service, inventory-service, payment-service, and notification-service.
+This starts order-service, payment-service, and notification-service.
 
 ### Start traffic generator
 
@@ -305,7 +303,6 @@ Example user actions:
 - Create an order
 - View an order
 - Cancel an order
-- Check inventory
 
 Locust helps validate:
 
@@ -431,3 +428,53 @@ Build incrementally — don't install everything on day one:
 21. Chaos Mesh
 
 This progression mirrors how many organizations evolve their platforms: start with core infrastructure and observability, then add orchestration, automation, security, and advanced traffic management.
+
+
+
+The First Way (SQLAlchemy): This is a Database Model. Its only job is to define how data is stored inside your physical database (PostgreSQL, MySQL, etc.). It interacts with your database engine.
+
+from sqlalchemy import Column, Integer, String, Float, DateTime
+from sqlalchemy.sql import func
+from app.core.db import Base
+
+class Order(Base):
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, nullable=False, index=True) # Index added for performance
+    product_id = Column(Integer, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    amount = Column(Float, nullable=False)
+    status = Column(String(32), server_default="created", nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+
+
+
+
+
+The Second Way (Pydantic): This is a Data Schema. Its only job is to validate and parse data coming into your API (request payloads) and data going out of your API (response payloads). It interacts with the client (frontend/mobile app).
+
+from pydantic import BaseModel, ConfigDict, EmailStr
+from datetime import datetime
+
+# Schema for incoming data (What the user sends)
+class OrderCreate(BaseModel):
+    customer_id: int
+    product_id: int
+    quantity: int
+    amount: float
+
+# Schema for outgoing data (What the API returns to the user)
+class OrderResponse(BaseModel):
+    id: int
+    customer_id: int
+    product_id: int
+    quantity: int
+    amount: float
+    status: str
+    created_at: datetime
+
+    # CRITICAL FOR PRODUCTION: Allows Pydantic to read SQLAlchemy objects
+    model_config = ConfigDict(from_attributes=True)

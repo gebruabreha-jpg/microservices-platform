@@ -12,7 +12,6 @@ class NotificationUser(FastHttpUser):
             "type": random.choice([
                 "order_confirmed",
                 "payment_received",
-                "inventory_reserved",
                 "order_shipped",
             ]),
             "order_id": random.randint(1, 1000),

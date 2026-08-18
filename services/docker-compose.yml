@@ -1,0 +1,60 @@
+
+services:
+  order-service:
+    build:
+      context: ..
+      dockerfile: services/order-service/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: appdb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_REST_URL: http://kafka-rest:8082
+    networks:
+      - platform-net
+
+  payment-service:
+    build:
+      context: ..
+      dockerfile: services/payment-service/Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: appdb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: secret
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    networks:
+      - platform-net
+
+  notification-service:
+    build:
+      context: ..
+      dockerfile: services/notification-service/Dockerfile
+    ports:
+      - "8083:8080"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: appdb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: admin
+      RABBITMQ_PASS: secret
+    networks:
+      - platform-net
+
+networks:
+  platform-net:
+    external: true

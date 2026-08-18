@@ -9,8 +9,6 @@ class MixedUser(FastHttpUser):
     tasks = {
         "create_order": 3,
         "list_orders": 2,
-        "list_inventory": 2,
-        "reserve_inventory": 1,
         "list_payments": 2,
         "process_payment": 1,
         "send_notification": 1,
@@ -48,27 +46,6 @@ class MixedUser(FastHttpUser):
         self.client.get("/orders", name="/orders")
 
     @task
-    def list_inventory(self):
-        self.client.get("/inventory", name="/inventory")
-
-    @task
-    def reserve_inventory(self):
-        payload = {
-            "product_id": random.randint(1, 50),
-            "quantity": random.randint(1, 5),
-        }
-        with self.client.post(
-            "/inventory/reserve",
-            json=payload,
-            catch_response=True,
-            name="/inventory/reserve",
-        ) as response:
-            if response.status_code in (200, 400):
-                response.success()
-            else:
-                response.failure(f"Unexpected status: {response.status_code}")
-
-    @task
     def list_payments(self):
         self.client.get("/payments", name="/payments")
 
@@ -98,7 +75,6 @@ class MixedUser(FastHttpUser):
             "type": random.choice([
                 "order_confirmed",
                 "payment_received",
-                "inventory_reserved",
                 "order_shipped",
             ]),
             "order_id": random.randint(1, 1000),

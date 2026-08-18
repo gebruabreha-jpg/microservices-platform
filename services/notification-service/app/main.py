@@ -1,51 +1,45 @@
+import logging
 from fastapi import FastAPI
-import pika
-import json
-import os
+from app.routes.notification_router import router
 import threading
+from app.service.notification_service import start_consumer, start_dlq_consumer
+from shared.telemetry import setup_tracing
 
-app = FastAPI()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("notification-service")
 
+app = FastAPI(title="notification-service")
+app.include_router(router)
 
-def handle_notification(ch, method, properties, body):
-    message = json.loads(body)
-    print(f"Dispatching notification: {message}")
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    setup_tracing("notification-service")
+    FastAPIInstrumentor.instrument_app(app)
+except ImportError:
+    pass
 
-
-def start_consumer():
-    try:
-        connection = pika.BlockingConnection(
-            pika.ConnectionParameters(
-                host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
-                port=5672,
-                credentials=pika.PlainCredentials(
-                    os.getenv("RABBITMQ_USER", "admin"),
-                    os.getenv("RABBITMQ_PASS", "secret"),
-                ),
-            )
-        )
-        channel = connection.channel()
-        channel.queue_declare(queue="notifications", durable=True)
-        channel.basic_consume(queue="notifications", on_message_callback=handle_notification, auto_ack=True)
-        channel.start_consuming()
-    except Exception:
-        pass
-
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_ipaddr
+    from slowapi.errors import RateLimitExceeded
+    limiter = Limiter(key_func=get_ipaddr, default_limits=["100/minute"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+except ImportError:
+    pass
 
 consumer_thread = threading.Thread(target=start_consumer, daemon=True)
 consumer_thread.start()
 
-
-@app.get("/health")
-def health():
-    return {"status": "ok", "service": "notification-service"}
+dlq_thread = threading.Thread(target=start_dlq_consumer, daemon=True)
+dlq_thread.start()
 
 
-@app.get("/metrics")
-def metrics():
-    return {"service": "notification-service"}
+@app.get("/")
+async def root():
+    return {"message": "notification API"}
 
 
-@app.post("/notifications")
-def send_notification(notification: dict):
-    return {"id": 1, "status": "queued", "type": notification.get("type")}
+@app.on_event("shutdown")
+def shutdown():
+    logger.info("Shutting down notification-service")
