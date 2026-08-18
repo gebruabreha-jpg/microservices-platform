@@ -31,7 +31,6 @@ POST /notifications
 **Notification Types**
 - `order_confirmed` — Order has been confirmed
 - `payment_received` — Payment has been processed
-- `inventory_reserved` — Inventory has been reserved
 - `order_shipped` — Order has been shipped
 
 ## Environment Variables

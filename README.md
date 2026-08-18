@@ -11,7 +11,6 @@ Client
 NGINX (API Gateway)
   │
   ├── Order Service      → PostgreSQL + Redis + Kafka
-  ├── Inventory Service  → PostgreSQL + Kafka
   ├── Payment Service    → PostgreSQL + RabbitMQ
   └── Notification Service → RabbitMQ
 ```
@@ -70,7 +69,6 @@ microservices-platform/
 │   └── scripts/                 # Start/stop/reset/seed scripts
 ├── services/
 │   ├── order-service/           # Order management
-│   ├── inventory-service/       # Inventory reservation
 │   ├── payment-service/         # Payment processing
 │   ├── notification-service/    # Notification dispatch
 │   ├── traffic-generator/       # Locust load testing
@@ -110,7 +108,7 @@ cd services
 docker compose up -d
 ```
 
-This starts order-service, inventory-service, payment-service, and notification-service.
+This starts order-service, payment-service, and notification-service.
 
 ### Start traffic generator
 
@@ -305,7 +303,6 @@ Example user actions:
 - Create an order
 - View an order
 - Cancel an order
-- Check inventory
 
 Locust helps validate:
 

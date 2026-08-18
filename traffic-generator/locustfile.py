@@ -62,42 +62,6 @@ class OrderUser(FastHttpUser):
         pass
 
 
-class InventoryUser(FastHttpUser):
-    wait_time = between(2, 5)
-    host = API_BASE
-
-    @task(3)
-    def list_inventory(self):
-        self.client.get(
-            "/inventory",
-            name="/inventory",
-        )
-
-    @task(2)
-    def reserve_inventory(self):
-        payload = {
-            "product_id": random.randint(1, 50),
-            "quantity": random.randint(1, 5),
-        }
-        with self.client.post(
-            "/inventory/reserve",
-            json=payload,
-            catch_response=True,
-            name="/inventory/reserve",
-        ) as response:
-            if response.status_code in (200, 400):
-                response.success()
-            else:
-                response.failure(f"Unexpected status: {response.status_code}")
-
-    @task(1)
-    def health_check(self):
-        self.client.get(
-            "/health",
-            name="/health",
-        )
-
-
 class PaymentUser(FastHttpUser):
     wait_time = between(2, 4)
     host = API_BASE
@@ -147,7 +111,7 @@ class NotificationUser(FastHttpUser):
     @task(2)
     def send_notification(self):
         payload = {
-            "type": random.choice(["order_confirmed", "payment_received", "inventory_reserved", "order_shipped"]),
+            "type": random.choice(["order_confirmed", "payment_received", "order_shipped"]),
             "order_id": random.randint(1, 1000),
         }
         with self.client.post(
@@ -176,8 +140,6 @@ class MixedUser(FastHttpUser):
     tasks = {
         OrderUser.create_order: 3,
         OrderUser.list_orders: 2,
-        InventoryUser.list_inventory: 2,
-        InventoryUser.reserve_inventory: 1,
         PaymentUser.list_payments: 2,
         PaymentUser.process_payment: 1,
         NotificationUser.send_notification: 1,
