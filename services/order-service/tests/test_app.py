@@ -12,7 +12,9 @@ def client():
 
 class TestHealth:
     def test_health_check(self, client):
-        response = client.get("/health")
+        with patch("app.service.order_service.check_dependencies") as mock_deps:
+            mock_deps.return_value = {"postgres": True, "redis": True}
+            response = client.get("/health")
         assert response.status_code == 200
         assert response.json()["service"] == "order-service"
 
@@ -29,7 +31,7 @@ class TestMetrics:
 class TestCreateOrder:
     def test_create_order_success(self, client):
         with patch("app.routes.order_router.create_order") as mock_create:
-            mock_create.return_value = {"id": 1, "status": "created"}
+            mock_create.return_value = {"id": 1, "status": "created", "correlation_id": "abc-123"}
             response = client.post(
                 "/orders",
                 json={"customer_id": 1, "product_id": 1, "quantity": 2, "amount": 59.98},
