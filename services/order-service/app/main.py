@@ -1,9 +1,9 @@
 from fastapi import FastAPI
-from app.routes import router as order-router
+from app.routes.order_router import router
 
-#FastAPI app + router includes
 app = FastAPI(title="order-service")
-app.include_router(order-router)
+app.include_router(router)
+
 
 @app.get("/")
 async def root():

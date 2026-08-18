@@ -1,33 +1,38 @@
-#This file initializes the asynchronous connection pool. 
-#We use AsyncSession and create_async_engine.
+import os
+import json
+import redis
+import psycopg2
+import requests
 
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import declarative_base
+#psycopg2 (not asyncpg)
+#redis-py (not aioredis)
+#requests (not aiohttp)
+#pika (not aio-pika)
 
-DATABASE_URL = "postgresql+asyncpg://user:password@localhost:5432/dbname"
+def get_redis():
+    return redis.Redis(
+        host=os.getenv("REDIS_HOST", "redis"),
+        port=int(os.getenv("REDIS_PORT", 6379)),
+        decode_responses=True,
+    )
 
-# pool_size and max_overflow are critical for highly concurrent apps
-engine = create_async_engine(
-    DATABASE_URL,
-    pool_size=20,          # Keeps 20 persistent connections open per worker
-    max_overflow=10,       # Allows 10 temporary extra connections under spikes
-    pool_timeout=30,       # Fails fast if connection cannot be acquired
-    pool_pre_ping=True     # Checks if connection is alive before using it
-)
 
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine, 
-    class_=AsyncSession, 
-    expire_on_commit=False  # Prevents unnecessary DB re-fetches after commits
-)
+def get_db():
+    return psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgres"),
+        port=int(os.getenv("POSTGRES_PORT", 5432)),
+        dbname=os.getenv("POSTGRES_DB", "appdb"),
+        user=os.getenv("POSTGRES_USER", "admin"),
+        password=os.getenv("POSTGRES_PASSWORD", "secret"),
+    )
 
-Base = declarative_base()
 
-# Dependency injector for FastAPI routes
-async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close() # Ensures connection goes back to the pool
+def publish_kafka_event(topic, event):
+    try:
+        requests.post(
+            os.getenv("KAFKA_REST_URL", "http://kafka-rest:8082/topics/" + topic),
+            json=event,
+            timeout=5,
+        )
+    except Exception:
+        pass
