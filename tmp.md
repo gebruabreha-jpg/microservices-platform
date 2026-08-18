@@ -26,6 +26,5 @@ If you convert to async, every layer needs changes:-
         Main: keep uvicorn but configure async workers
         Tests: TestClient → httpx.AsyncClient
 
-
-
+compose up -d --build vs compose up -d :-
 When you run docker compose up, Docker checks if an image already exists. If it does, it skips building and just spins up a container from that old image.To make sure Docker rebuilds your image whenever you change your code or dependencies, use the --build flag:docker compose up -d --build
