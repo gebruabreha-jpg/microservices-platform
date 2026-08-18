@@ -1,6 +1,6 @@
 from shared.config import load_env, get_env
 from shared.logger import get_logger, log_event
-from shared.models import Order, Payment, InventoryItem
+from shared.models import Order, Payment
 
 try:
     from shared.circuit_breaker import redis_breaker, kafka_breaker, rabbitmq_breaker, postgres_breaker

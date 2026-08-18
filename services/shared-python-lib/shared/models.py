@@ -16,10 +16,3 @@ class Payment(BaseModel):
     order_id: int
     amount: float
     status: str = "processing"
-
-
-class InventoryItem(BaseModel):
-    id: Optional[int] = None
-    product_id: int
-    quantity: int
-    reserved: int = 0

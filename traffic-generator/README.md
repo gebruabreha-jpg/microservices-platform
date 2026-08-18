@@ -7,7 +7,6 @@ This directory contains the Locust-based traffic generator for load testing the 
 The traffic generator simulates realistic user behavior across all services in the platform:
 
 - **Order Service** — Create and list orders
-- **Inventory Service** — List inventory and reserve items
 - **Payment Service** — List payments and process new payments
 - **Notification Service** — Send notification requests
 
@@ -20,11 +19,6 @@ Locust Master (8089)
   │     ├── POST /orders (create order)
   │     ├── GET /orders (list orders)
   │     ├── GET /metrics
-  │     └── GET /health
-  │
-  ├── InventoryUser (25% of traffic)
-  │     ├── GET /inventory (list inventory)
-  │     ├── POST /inventory/reserve (reserve item)
   │     └── GET /health
   │
   ├── PaymentUser (25% of traffic)
@@ -87,11 +81,6 @@ locust -f locustfile.py \
 - Creates orders with random customer/product data
 - Lists all orders
 - Checks metrics endpoint
-- Health check
-
-### InventoryUser (25% of traffic)
-- Lists inventory items
-- Reserves inventory (may return 400 if insufficient)
 - Health check
 
 ### PaymentUser (25% of traffic)
