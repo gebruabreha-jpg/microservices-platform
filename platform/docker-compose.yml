@@ -19,6 +19,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
     networks:
       - platform-net
 
@@ -26,14 +27,20 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes           # enable AOF persistence
+    command: >
+      redis-server /etc/redis/redis.conf
+      --requirepass ${REDIS_PASSWORD:-secret}
     volumes:
-      - redis_data:/data                             # persistent cache storage
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+      - redis_data:/data
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-secret}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-secret}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
     networks:
       - platform-net
 
@@ -46,6 +53,7 @@ services:
     depends_on:
       - postgres
       - redis
+    restart: always
     networks:
       - platform-net
 
@@ -55,6 +63,7 @@ services:
       - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
+    restart: always
     networks:
       - platform-net                                # Kafka dependency
 
@@ -77,6 +86,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: always
         
 
   kafka-rest:
@@ -86,6 +96,7 @@ services:
       KAFKA_REST_LISTENERS: http://0.0.0.0:8082     # HTTP proxy for Kafka topics
     depends_on:
       - kafka
+    restart: always
     networks:
       - platform-net
 
@@ -100,6 +111,7 @@ services:
     volumes:
       - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json  # auto-create queues
       - rabbitmq_data:/var/lib/rabbitmq   # persistent message storage
+    restart: always
     networks:
       - platform-net
 
@@ -113,6 +125,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+    restart: always
     networks:
       - platform-net
 
@@ -126,6 +139,7 @@ services:
       - grafana_data:/var/lib/grafana               # dashboard settings
       - ./grafana/provisioning:/etc/grafana/provisioning:ro  # auto-configure datasources
       - ./grafana/dashboards:/etc/grafana/dashboards:ro      # pre-built dashboards
+    restart: always
     networks:
       - platform-net
 
@@ -138,6 +152,7 @@ services:
     volumes:
       - ./loki/config.yml:/etc/loki/config.yml:ro
       - loki_data:/loki                             # log storage
+    restart: always
     networks:
       - platform-net
 
@@ -150,6 +165,7 @@ services:
       - ./loki/promtail/promtail-config.yaml:/etc/promtail/config.yaml:ro
       - /tmp:/tmp
     command: ["-config.file=/etc/promtail/config.yaml"]
+    restart: always
     networks:
       - platform-net
 
@@ -163,6 +179,7 @@ services:
     volumes:
       - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
       - tempo_data:/tmp/tempo                       # trace storage
+    restart: always
     networks:
       - platform-net
 
@@ -176,6 +193,7 @@ services:
       - '--config=/etc/otel-collector/config.yaml'
     volumes:
       - ./otel-collector/config.yaml:/etc/otel-collector/config.yaml:ro
+    restart: always
     networks:
       - platform-net
 
@@ -191,6 +209,7 @@ services:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
       - '--path.rootfs=/rootfs'
+    restart: always
     networks:
       - platform-net
 
@@ -201,6 +220,7 @@ services:
       - /var/run:/var/run:ro                        # Docker socket
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+    restart: always
     networks:
       - platform-net
 
@@ -212,6 +232,7 @@ services:
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
     depends_on:
       - kafka
+    restart: always
     networks:
       - platform-net
 
@@ -219,6 +240,18 @@ services:
     image: redis/redisinsight:latest
     ports:
       - "5540:5540"
+    restart: always
+    networks:
+      - platform-net
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-secret}
+    restart: always
     networks:
       - platform-net
 
@@ -231,6 +264,7 @@ services:
       PGADMIN_DEFAULT_PASSWORD: admin
     volumes:
       - pgadmin_data:/var/lib/pgadmin               # saved server connections
+    restart: always
     networks:
       - platform-net
 
@@ -239,6 +273,7 @@ services:
     ports:
       - "1025:1025"                                  # SMTP server
       - "8025:8025"                                  # Web UI
+    restart: always
     networks:
       - platform-net
 

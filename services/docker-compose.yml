@@ -14,7 +14,9 @@ services:
       POSTGRES_PASSWORD: secret
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-secret}
       KAFKA_REST_URL: http://kafka-rest:8082
+    restart: always
     networks:
       - platform-net
 
@@ -34,6 +36,7 @@ services:
       RABBITMQ_USER: admin
       RABBITMQ_PASS: secret
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    restart: always
     networks:
       - platform-net
 
@@ -52,6 +55,7 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: admin
       RABBITMQ_PASS: secret
+    restart: always
     networks:
       - platform-net
 
