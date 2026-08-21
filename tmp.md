@@ -50,5 +50,46 @@ traffic-generator/locust.conf — Locust configuration
 traffic-generator/Dockerfile — Container image (Python 3.12 + Locust)
 traffic-generator/docker-compose.yml — Service definition (port 8089, connects to platform-net)
 
-
 runs Locust and targets http://nginx, which resolves to the main platform's nginx gateway
+
+
+each upstream (order-service, payment-service, notification-service) has only one server instance, so it's pure path-based routing , Not load balancing so we are using as Reverse proxy — routes requests by path to the appropriate microservice.
+
+Locust
+  │
+  ▼
+platform nginx (port 80)  ← THE ONLY reverse proxy
+  │
+  ├── /orders        → order-service:8080 (uvicorn, no nginx)
+  ├── /payments      → payment-service:8080 (uvicorn, no nginx)
+  └── /notifications → notification-service:8080 (uvicorn, no nginx)
+
+  Locust → nginx (reverse proxy) → services (FastAPI/uvicorn)
+
+pure reverse proxy routing:-
+
+  upstream order-service {
+    server order-service:8080;  # only 1 backend
+}
+
+LB:-
+upstream order-service {
+    least_conn;  # or: round_robin (default), ip_hash
+    server order-service-1:8080;
+    server order-service-2:8080;
+    server order-service-3:8080;
+}
+
+
+Key takeaway:
+
+nginx = great static reverse proxy + rate limiting, but weak dynamic service discovery and active health checks
+HAProxy = king of L4/L7 load balancing with active health checks, circuit breakers, and stickiness — widely used in production
+Traefik = built for dynamic environments (Docker, Kubernetes) — auto-discovers services and reloads config without restarts
+For your microservices platform with Docker Compose (static services), nginx works fine. HAProxy or Traefik become more valuable when you need:
+
+Active health checks that remove unhealthy backends before they cause errors
+Auto-discovery of new service instances without config reloads
+
+
+docker compose -f services/docker-compose.yml up --scale order-service=3 --scale payment-service=2 --scale notification-service=2 -d
