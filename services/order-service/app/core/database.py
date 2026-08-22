@@ -1,6 +1,5 @@
 import os
 import json
-import logging
 import redis
 import psycopg2
 from psycopg2 import pool
@@ -16,27 +15,12 @@ except ImportError:
         return None
     def wait_exponential(**kwargs):
         return None
-from shared.logger import log_event
-from shared.telemetry import setup_tracing
 
 try:
     from shared.circuit_breaker import redis_breaker, kafka_breaker
 except ImportError:
     redis_breaker = None
     kafka_breaker = None
-
-logger = logging.getLogger("order-service")
-
-SERVICE_NAME = "order-service"
-
-try:
-    from prometheus_client import Counter, Histogram, CollectorRegistry
-    registry = CollectorRegistry()
-    REQUEST_COUNT = Counter("order_requests_total", "Total order requests", ["method", "endpoint", "status"], registry=registry)
-    REQUEST_LATENCY = Histogram("order_request_latency_seconds", "Order request latency", ["endpoint"], registry=registry)
-except ImportError:
-    REQUEST_COUNT = None
-    REQUEST_LATENCY = None
 
 try:
     db_pool = pool.ThreadedConnectionPool(
