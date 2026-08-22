@@ -6,6 +6,26 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+  # =============================================================================
+  # PROMETHEUS: Direct scraping from service /metrics endpoints
+  # =============================================================================
+  # Why both OTLP and Prometheus receivers:
+  # - OTLP: Metrics from application code (counters, histograms) via MeterProvider
+  # - Prometheus: Metrics from /metrics endpoints (fallback/compatibility)
+  # Both paths export to the same Prometheus backend on port 8889.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'order-service'
+          static_configs:
+            - targets: ['order-service:8080']
+        - job_name: 'payment-service'
+          static_configs:
+            - targets: ['payment-service:8080']
+        - job_name: 'notification-service'
+          static_configs:
+            - targets: ['notification-service:8080']
+
 processors:
   batch:
     timeout: 1s
@@ -26,7 +46,7 @@ service:
       processors: [batch]
       exporters: [debug, otlphttp]
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, prometheus]
       processors: [batch]
       exporters: [debug, prometheus]
     logs:

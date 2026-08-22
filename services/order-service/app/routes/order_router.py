@@ -1,6 +1,15 @@
+"""
+Order Service - API Routes
+
+METRICS ENDPOINT:
+  Returns Prometheus text format for direct scraping.
+  Primary metrics path is OTLP -> OTel Collector -> Prometheus.
+"""
+
 import uuid
-from fastapi import APIRouter, HTTPException, Request
-from app.service.order_service import health_check, get_metrics, list_orders, create_order
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import PlainTextResponse
+from app.service.order_service import health_check, list_orders, create_order
 from app.schema.order_schema import OrderCreate
 
 router = APIRouter()
@@ -11,9 +20,22 @@ def health():
     return health_check()
 
 
-@router.get("/metrics")
-def metrics():
-    return get_metrics()
+# =============================================================================
+# METRICS: Prometheus text format endpoint
+# =============================================================================
+# We use prometheus_client generate_latest() for direct scraping.
+# This is a fallback path. Primary metrics use OTLP export.
+try:
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+    @router.get("/metrics")
+    async def metrics():
+        """Return Prometheus-formatted metrics."""
+        return PlainTextResponse(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+except ImportError:
+    @router.get("/metrics")
+    def metrics_fallback():
+        return {"service": "order-service", "metrics": "prometheus_client not installed"}
 
 
 @router.get("/orders")

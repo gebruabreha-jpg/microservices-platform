@@ -1,6 +1,15 @@
+"""
+Notification Service - API Routes
+
+METRICS ENDPOINT:
+  Returns Prometheus text format for direct scraping.
+  Primary metrics path is OTLP -> OTel Collector -> Prometheus.
+"""
+
 import uuid
-from fastapi import APIRouter, HTTPException, Request
-from app.service.notification_service import health_check, get_metrics, list_notifications, send_notification
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import PlainTextResponse
+from app.service.notification_service import health_check, list_notifications, send_notification
 from app.schema.notification_schema import NotificationCreate
 
 router = APIRouter()
@@ -11,9 +20,20 @@ def health():
     return health_check()
 
 
-@router.get("/metrics")
-def metrics():
-    return get_metrics()
+# =============================================================================
+# METRICS: Prometheus text format endpoint
+# =============================================================================
+try:
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+
+    @router.get("/metrics")
+    async def metrics():
+        """Return Prometheus-formatted metrics."""
+        return PlainTextResponse(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+except ImportError:
+    @router.get("/metrics")
+    def metrics_fallback():
+        return {"service": "notification-service", "metrics": "prometheus_client not installed"}
 
 
 @router.get("/notifications")
