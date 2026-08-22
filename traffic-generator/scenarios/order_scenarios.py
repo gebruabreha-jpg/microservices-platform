@@ -5,6 +5,7 @@ from locust import FastHttpUser
 
 class OrderUser(FastHttpUser):
     wait_time = between(1, 3)
+    host = "http://nginx"
 
     def on_start(self):
         self.order_ids = []
@@ -34,21 +35,12 @@ class OrderUser(FastHttpUser):
 
     @task(2)
     def list_orders(self):
-        self.client.get(
-            "/orders",
-            name="/orders",
-        )
+        self.client.get("/orders", name="/orders")
 
     @task(1)
     def get_metrics(self):
-        self.client.get(
-            "/metrics",
-            name="/metrics",
-        )
+        self.client.get("/metrics/order", name="/metrics/order")
 
     @task(1)
     def health_check(self):
-        self.client.get(
-            "/health",
-            name="/health",
-        )
+        self.client.get("/health/order", name="/health/order")

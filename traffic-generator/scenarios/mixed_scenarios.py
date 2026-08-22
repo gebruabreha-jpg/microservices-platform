@@ -5,21 +5,13 @@ from locust import FastHttpUser
 
 class MixedUser(FastHttpUser):
     wait_time = between(1, 4)
-
-    tasks = {
-        "create_order": 3,
-        "list_orders": 2,
-        "list_payments": 2,
-        "process_payment": 1,
-        "send_notification": 1,
-        "health_check": 1,
-    }
+    host = "http://nginx"
 
     def on_start(self):
         self.order_ids = []
         self.customer_id = random.randint(1, 100)
 
-    @task
+    @task(3)
     def create_order(self):
         payload = {
             "customer_id": self.customer_id,
@@ -41,15 +33,15 @@ class MixedUser(FastHttpUser):
             else:
                 response.failure(f"Unexpected status: {response.status_code}")
 
-    @task
+    @task(2)
     def list_orders(self):
         self.client.get("/orders", name="/orders")
 
-    @task
+    @task(2)
     def list_payments(self):
         self.client.get("/payments", name="/payments")
 
-    @task
+    @task(1)
     def process_payment(self):
         payload = {
             "order_id": random.randint(1, 1000),
@@ -69,7 +61,7 @@ class MixedUser(FastHttpUser):
             else:
                 response.failure(f"Unexpected status: {response.status_code}")
 
-    @task
+    @task(1)
     def send_notification(self):
         payload = {
             "type": random.choice([
@@ -90,7 +82,7 @@ class MixedUser(FastHttpUser):
             else:
                 response.failure(f"Unexpected status: {response.status_code}")
 
-    @task
+    @task(1)
     def health_check(self):
         self.client.get("/health", name="/health")
 

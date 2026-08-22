@@ -5,6 +5,7 @@ from locust import FastHttpUser
 
 class NotificationUser(FastHttpUser):
     wait_time = between(3, 6)
+    host = "http://nginx"
 
     @task(2)
     def send_notification(self):
@@ -29,7 +30,4 @@ class NotificationUser(FastHttpUser):
 
     @task(1)
     def health_check(self):
-        self.client.get(
-            "/health",
-            name="/health",
-        )
+        self.client.get("/health/notification", name="/health/notification")

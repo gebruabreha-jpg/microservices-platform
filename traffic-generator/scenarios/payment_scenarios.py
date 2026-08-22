@@ -5,16 +5,14 @@ from locust import FastHttpUser
 
 class PaymentUser(FastHttpUser):
     wait_time = between(2, 4)
+    host = "http://nginx"
 
     def on_start(self):
         self.order_ids = []
 
     @task(3)
     def list_payments(self):
-        self.client.get(
-            "/payments",
-            name="/payments",
-        )
+        self.client.get("/payments", name="/payments")
 
     @task(2)
     def process_payment(self):
@@ -38,7 +36,4 @@ class PaymentUser(FastHttpUser):
 
     @task(1)
     def health_check(self):
-        self.client.get(
-            "/health",
-            name="/health",
-        )
+        self.client.get("/health/payment", name="/health/payment")
