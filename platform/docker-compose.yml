@@ -22,13 +22,14 @@ services:
     networks:
       - platform-net
 
+ 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes           # enable AOF persistence
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - redis_data:/data                             # persistent cache storage
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -49,14 +50,14 @@ services:
     networks:
       - platform-net
 
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    ports:
-      - "2181:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-    networks:
-      - platform-net                                # Kafka dependency
+    zookeeper:
+      image: confluentinc/cp-zookeeper:7.5.0
+      ports:
+        - "2181:2181"
+      environment:
+        ZOOKEEPER_CLIENT_PORT: 2181
+      networks:
+        - platform-net                                # Kafka dependency
 
     kafka:
       image: confluentinc/cp-kafka:7.5.0
