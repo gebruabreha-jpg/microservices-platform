@@ -50,14 +50,14 @@ services:
     networks:
       - platform-net
 
-    zookeeper:
-      image: confluentinc/cp-zookeeper:7.5.0
-      ports:
-        - "2181:2181"
-      environment:
-        ZOOKEEPER_CLIENT_PORT: 2181
-      networks:
-        - platform-net                                # Kafka dependency
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - platform-net                                # Kafka dependency
 
     kafka:
       image: confluentinc/cp-kafka:7.5.0
