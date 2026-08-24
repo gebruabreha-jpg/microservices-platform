@@ -5,7 +5,6 @@ WORKDIR /traffic-generator
 COPY traffic-generator/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY traffic-generator/locustfile.py .
-COPY traffic-generator/scenarios/ ./scenarios/
 
 EXPOSE 8089
 
