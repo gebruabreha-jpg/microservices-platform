@@ -28,7 +28,7 @@ class OrderUser(FastHttpUser):
             "amount": round(random.uniform(5.0, 200.0), 2),
         }
          # self.client.rest automatically catches non-2xx status codes as failures instade of:- with self.client.post(
-          with self.client.rest("POST", "/orders", json=payload, name="/orders") as response:
+        with self.client.rest("POST", "/orders", json=payload, name="/orders") as response:
             if response.status_code == 200 and "id" in response.js:
                 self.created_order_ids.append(response.js["id"])
 
