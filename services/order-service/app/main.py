@@ -36,12 +36,10 @@ os.environ.setdefault("ENVIRONMENT", "development")
 # Each log entry includes service name, timestamp, level, message
 logger = get_logger("order-service")
 
-# =============================================================================
-# TRACING: Initialize OpenTelemetry tracing
-# =============================================================================
-# Traces are exported via OTLP to the OTel Collector, then to Tempo.
-# FastAPIInstrumentor auto-creates spans for every incoming HTTP request.
-setup_tracing(os.getenv("SERVICE_NAME"))
+app = FastAPI(title="order-service")
+app.include_router(router)
+
+setup_tracing(app, os.getenv("SERVICE_NAME"))
 
 # =============================================================================
 # METRICS: OTLP metrics exported to Prometheus via OTel Collector

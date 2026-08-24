@@ -22,15 +22,16 @@ import uuid
 import time
 from prometheus_client import Counter, Histogram
 from opentelemetry.trace import Status, StatusCode
-from app.repository.order_repository import create_order, get_all_orders
-from app.core.database import get_redis, publish_kafka_event, release_db, check_dependencies, cache_set, cache_get, cache_delete, db_pool
+from app.repository.order_repository import create_order as create_order_repo, get_all_orders
+from app.core.database import get_db, get_redis, publish_kafka_event, release_db, check_dependencies, cache_set, cache_get, cache_delete, db_pool
 from app.schema.order_schema import OrderCreate
-from shared.telemetry import get_tracer, get_meter, log_event
+from shared.telemetry import get_tracer, get_meter, get_logger, log_event
 
 # =============================================================================
 # TRACING: Get tracer for custom spans
 # =============================================================================
 tracer = get_tracer("order-service")
+logger = get_logger("order-service")
 
 # =============================================================================
 # METRICS: OTLP metrics (primary path) + Prometheus client (fallback)
@@ -149,7 +150,7 @@ def create_order(order: OrderCreate, request_id=None):
             # =========================================================================
             with tracer.start_as_current_span("db.insert_order") as db_span:
                 conn = get_db()
-                order_id = create_order(order, conn)
+                order_id = create_order_repo(order, conn)
                 db_span.set_attribute("db.rows_affected", 1)
                 db_span.set_attribute("order.id", order_id)
 
@@ -214,5 +215,5 @@ def create_order(order: OrderCreate, request_id=None):
                 otlp_request_duration.record(duration, {"endpoint": "/orders"})
             if REQUEST_LATENCY:
                 REQUEST_LATENCY.labels(endpoint="/orders").observe(duration)
-            if db_pool:
+            if db_pool and 'conn' in locals():
                 release_db(conn)

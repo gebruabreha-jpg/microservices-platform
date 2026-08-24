@@ -194,7 +194,7 @@ def log_event(logger: logging.Logger, level: str, message: str, **kwargs):
 # PUBLIC API
 # =============================================================================
 
-def setup_tracing(service_name: str):
+def setup_tracing(app, service_name: str):
     """
     Initialize tracing for a FastAPI service.
 
@@ -204,8 +204,8 @@ def setup_tracing(service_name: str):
     """
     tracer = trace.get_tracer(service_name)
     FastAPIInstrumentor.instrument_app(
+        app,
         tracer_provider=_trace_provider,
-        resource=_resource,
     )
     return tracer
 

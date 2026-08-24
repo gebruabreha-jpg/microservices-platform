@@ -21,6 +21,7 @@ import time
 import uuid
 import logging
 from opentelemetry.trace import Status, StatusCode
+from prometheus_client import Counter, Histogram
 from app.repository.payment_repository import create_payment, get_all_payments, get_payment_by_order_id
 from app.core.database import queue_rabbitmq_job, release_db, check_dependencies
 from app.schema.payment_schema import PaymentCreate

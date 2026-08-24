@@ -9,6 +9,7 @@ from locust import FastHttpUser
 API_BASE = "http://nginx"
 
 RESULTS_DIR = "/results"
+
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 

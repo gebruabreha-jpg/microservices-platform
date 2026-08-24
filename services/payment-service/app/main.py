@@ -35,10 +35,10 @@ os.environ.setdefault("ENVIRONMENT", "development")
 # =============================================================================
 logger = get_logger("payment-service")
 
-# =============================================================================
-# TRACING: OTLP traces -> Tempo
-# =============================================================================
-setup_tracing(os.getenv("SERVICE_NAME"))
+app = FastAPI(title="payment-service")
+app.include_router(router)
+
+setup_tracing(app, os.getenv("SERVICE_NAME"))
 
 # =============================================================================
 # METRICS: OTLP metrics -> Prometheus (via OTel Collector)

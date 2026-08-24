@@ -21,6 +21,7 @@ import time
 import uuid
 import logging
 from opentelemetry.trace import Status, StatusCode
+from prometheus_client import Counter, Histogram
 from app.repository.notification_repository import create_notification, get_all_notifications
 from app.core.database import get_rabbitmq_connection, release_db, check_dependencies, setup_dlq
 from app.schema.notification_schema import NotificationCreate
