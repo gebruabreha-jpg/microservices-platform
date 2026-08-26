@@ -100,3 +100,6 @@ async def root():
 @app.on_event("shutdown")
 def shutdown():
     log_event(logger, "info", "Shutting down order-service")
+    # Force flush before shutdown
+    from opentelemetry.sdk.trace import get_tracer_provider
+    get_tracer_provider().force_flush()
