@@ -35,16 +35,17 @@ logger = get_logger("order-service")
 app = FastAPI(title="order-service")
 
 #Add correlation ID middleware
+"""
+Middleware to add a correlation ID to each request for tracing/logging correlation.
+If the client provides a 'X-Correlation-ID' header, use that; otherwise, generate a new UUID.
+"""
 @app.middleware("http")
 async def add_correlation_id(request: Request, call_next):
-    """
-    Middleware to add a correlation ID to each request for tracing/logging correlation.
-    If the client provides a 'X-Correlation-ID' header, use that; otherwise, generate a new UUID.
-    """
     correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
     request.state.correlation_id = correlation_id
     response: Response = await call_next(request)
     response.headers["X-Correlation-ID"] = correlation_id
+    logger.info(f"{request.method} {request.url.path}", extra={"correlation_id": correlation_id})
     return response
 
 # set up Rate limiting
@@ -88,7 +89,7 @@ try:
         """Return Prometheus-formatted metrics for direct scraping."""
         return PlainTextResponse(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 except ImportError:
-    pass
+    logger.warning("prometheus_client not installed, /metrics endpoint will not be available. Install prometheus_client to enable Prometheus metrics endpoint.")
 
 
 
@@ -96,6 +97,14 @@ except ImportError:
 async def root():
     return {"message": "order API"}
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+@app.get("/ready")
+async def readiness():
+    # Add checks for dependencies (DB, Redis, etc.)
+    return {"ready": True}
 
 @app.on_event("shutdown")
 def shutdown():
