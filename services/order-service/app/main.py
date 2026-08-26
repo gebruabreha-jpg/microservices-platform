@@ -43,12 +43,11 @@ setup_tracing(app, os.getenv("SERVICE_NAME"))
 app = FastAPI(title="order-service")
 app.include_router(router)
 
-
 # =============================================================================
 # METRICS: OTLP metrics exported to Prometheus via OTel Collector
 # =============================================================================
 # We use OTLP metrics because:
-#   1. Avoids port conflicts in container orchestration
+#   1. Avoids port conflicts in container orchestration 
 #   2. Background threads (Kafka consumers) can report metrics without HTTP server
 #   3. OTel Collector handles aggregation and export to Prometheus
 meter = get_meter()
