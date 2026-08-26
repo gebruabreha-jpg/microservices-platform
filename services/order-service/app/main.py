@@ -56,7 +56,8 @@ try:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 except ImportError:
-    pass
+    logger.warning("slowapi not installed,rate limiting middleware will not be available. Install slowapi to enable rate limiting.")
+
 #set up tracing
 #instrumentation to captures router spans properly
 setup_tracing(app, os.getenv("SERVICE_NAME"))
