@@ -36,10 +36,13 @@ os.environ.setdefault("ENVIRONMENT", "development")
 # Each log entry includes service name, timestamp, level, message
 logger = get_logger("order-service")
 
+
+#instrumentation to captures router spans properly
+setup_tracing(app, os.getenv("SERVICE_NAME"))
+
 app = FastAPI(title="order-service")
 app.include_router(router)
 
-setup_tracing(app, os.getenv("SERVICE_NAME"))
 
 # =============================================================================
 # METRICS: OTLP metrics exported to Prometheus via OTel Collector
@@ -59,13 +62,6 @@ request_duration = meter.create_histogram(
     description="Order request duration in seconds",
     unit="s"
 )
-
-# =============================================================================
-# FASTAPI APP
-# =============================================================================
-app = FastAPI(title="order-service")
-app.include_router(router)
-
 
 # =============================================================================
 # METRICS ENDPOINT: Prometheus text format (for direct scraping)
