@@ -16,10 +16,10 @@ LOGGING:
   - Collected by Promtail and shipped to Loki
   - Logs include trace_id/span_id for correlation with traces
 """
-
 import os
+import uuid
 import logging
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Request
 from fastapi.responses import PlainTextResponse
 from app.routes.order_router import router
 from shared.telemetry import setup_tracing, get_meter, get_logger, log_event
@@ -29,27 +29,37 @@ os.environ.setdefault("SERVICE_NAME", "order-service")
 os.environ.setdefault("SERVICE_VERSION", "1.0.0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
-# =============================================================================
-# LOGGING: Traditional structured JSON logging (not OTLP)
-# =============================================================================
-# Logs go to stdout -> Promtail -> Loki
-# Each log entry includes service name, timestamp, level, message
 logger = get_logger("order-service")
 
+#Create app
+app = FastAPI(title="order-service")
 
+#Add correlation ID middleware
+@app.middleware("http")
+async def add_correlation_id(request: Request, call_next):
+    """
+    Middleware to add a correlation ID to each request for tracing/logging correlation.
+    If the client provides a 'X-Correlation-ID' header, use that; otherwise, generate a new UUID.
+    """
+    correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+    request.state.correlation_id = correlation_id
+    response: Response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
+
+# set up Rate limiting
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_ipaddr
+    from slowapi.errors import RateLimitExceeded
+    limiter = Limiter(key_func=get_ipaddr, default_limits=["100/minute"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+except ImportError:
+    pass
+#set up tracing
 #instrumentation to captures router spans properly
 setup_tracing(app, os.getenv("SERVICE_NAME"))
-
-app = FastAPI(title="order-service")
-app.include_router(router)
-
-# =============================================================================
-# METRICS: OTLP metrics exported to Prometheus via OTel Collector
-# =============================================================================
-# We use OTLP metrics because:
-#   1. Avoids port conflicts in container orchestration 
-#   2. Background threads (Kafka consumers) can report metrics without HTTP server
-#   3. OTel Collector handles aggregation and export to Prometheus
 meter = get_meter()
 request_counter = meter.create_counter(
     "order_requests_total",
@@ -62,9 +72,11 @@ request_duration = meter.create_histogram(
     unit="s"
 )
 
-# =============================================================================
+#Include router
+app.include_router(router)
+
+#Add metrics endpoint
 # METRICS ENDPOINT: Prometheus text format (for direct scraping)
-# =============================================================================
 # This endpoint is kept for Prometheus direct scraping as fallback.
 # Primary metrics path is OTLP -> OTel Collector -> Prometheus.
 try:
@@ -77,19 +89,6 @@ try:
 except ImportError:
     pass
 
-
-# =============================================================================
-# RATE LIMITING
-# =============================================================================
-try:
-    from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.util import get_ipaddr
-    from slowapi.errors import RateLimitExceeded
-    limiter = Limiter(key_func=get_ipaddr, default_limits=["100/minute"])
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-except ImportError:
-    pass
 
 
 @app.get("/")
