@@ -23,7 +23,7 @@ from fastapi.responses import PlainTextResponse
 from app.routes.notification_router import router
 import threading
 from app.service.notification_service import start_consumer, start_dlq_consumer
-from shared.telemetry import setup_tracing, get_meter, get_logger, log_event
+from shared.telemetry import setup_tracing, get_meter, get_logger, log_event,flush_telemetry
 
 # Service identity
 os.environ.setdefault("SERVICE_NAME", "notification-service")
@@ -109,6 +109,8 @@ async def root():
     return {"message": "notification API"}
 
 
+
 @app.on_event("shutdown")
 def shutdown():
-    log_event(logger, "info", "Shutting down notification-service")
+    log_event(logger, "info", "Shutting down order-service")
+    flush_telemetry()  # All OTel logic stays in shared module

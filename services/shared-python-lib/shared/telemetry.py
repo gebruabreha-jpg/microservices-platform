@@ -231,3 +231,11 @@ def get_tracer(name: str):
             ...
     """
     return trace.get_tracer(name)
+
+def flush_telemetry(timeout_millis=5000):
+    """Flush all telemetry exporters before shutdown."""
+    try:
+        from opentelemetry.sdk.trace import get_tracer_provider
+        get_tracer_provider().force_flush(timeout_millis=timeout_millis)
+    except Exception as e:
+        logging.error(f"Error flushing telemetry: {e}")
