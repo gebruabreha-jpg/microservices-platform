@@ -23,7 +23,7 @@ from fastapi.responses import PlainTextResponse
 from app.routes.notification_router import router
 import threading
 from app.service.notification_service import start_consumer, start_dlq_consumer
-from shared.telemetry import setup_tracing, get_meter, get_logger, log_event,flush_telemetry
+from shared-lib.telemetry import setup_tracing, get_meter, get_logger, log_event,flush_telemetry
 
 # Service identity
 os.environ.setdefault("SERVICE_NAME", "notification-service")
