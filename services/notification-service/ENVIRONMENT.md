@@ -48,4 +48,4 @@ Consumes from RabbitMQ queue `notifications` (durable queue). Messages are dispa
 ## Dependencies
 
 - RabbitMQ — message consumer for async notifications
-- shared-python-lib — config, logger, telemetry
+- shared — config, logger, telemetry

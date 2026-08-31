@@ -76,4 +76,4 @@ GET /orders
 - PostgreSQL — order persistence
 - Redis — caching and metrics counter
 - Kafka — event streaming (order.created events)
-- shared-python-lib — Order model, config, logger, telemetry
+- shared — Order model, config, logger, telemetry

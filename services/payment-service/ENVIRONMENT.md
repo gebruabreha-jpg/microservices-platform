@@ -80,4 +80,4 @@ Publishes payment events to RabbitMQ queue `notifications`:
 
 - PostgreSQL — payment persistence
 - RabbitMQ — async notification dispatch
-- shared-python-lib — Payment model, config, logger, telemetry
+- shared — Payment model, config, logger, telemetry

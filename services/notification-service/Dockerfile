@@ -6,7 +6,7 @@ COPY services/notification-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/notification-service/app/ ./app/
-COPY services/shared-python-lib/shared ./shared
+COPY services/shared ./shared
 
 EXPOSE 8080
 
