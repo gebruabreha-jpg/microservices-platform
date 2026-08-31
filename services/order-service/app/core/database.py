@@ -4,23 +4,9 @@ import redis
 import psycopg2
 from psycopg2 import pool
 from kafka import KafkaProducer
-try:
-    from tenacity import retry, stop_after_attempt, wait_exponential
-except ImportError:
-    def retry(*args, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
-    def stop_after_attempt(x):
-        return None
-    def wait_exponential(**kwargs):
-        return None
 
-try:
-    from shared.circuit_breaker import redis_breaker, kafka_breaker
-except ImportError:
-    redis_breaker = None
-    kafka_breaker = None
+from resilience import default_retry
+from resilience.circuit_breaker import redis_breaker, kafka_breaker
 
 try:
     db_pool = pool.ThreadedConnectionPool(
@@ -87,7 +73,7 @@ def publish_kafka_event(topic, event):
         publish_kafka_event_impl(topic, event)
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+@default_retry
 def publish_kafka_event_impl(topic, event):
     if not kafka_producer:
         raise RuntimeError("Kafka producer not available")

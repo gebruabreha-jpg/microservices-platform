@@ -3,22 +3,9 @@ import json
 import pika
 import psycopg2
 from psycopg2 import pool
-try:
-    from tenacity import retry, stop_after_attempt, wait_exponential
-except ImportError:
-    def retry(*args, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
-    def stop_after_attempt(x):
-        return None
-    def wait_exponential(**kwargs):
-        return None
 
-try:
-    from shared.circuit_breaker import rabbitmq_breaker
-except ImportError:
-    rabbitmq_breaker = None
+from resilience import default_retry
+from resilience.circuit_breaker import rabbitmq_breaker
 
 try:
     db_pool = pool.ThreadedConnectionPool(
@@ -73,7 +60,7 @@ def queue_rabbitmq_job(queue, message):
         queue_rabbitmq_job_impl(queue, message)
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+@default_retry
 def queue_rabbitmq_job_impl(queue, message):
     connection = get_rabbitmq_connection()
     channel = connection.channel()
