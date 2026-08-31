@@ -72,7 +72,7 @@ microservices-platform/
 │   ├── payment-service/         # Payment processing
 │   ├── notification-service/    # Notification dispatch
 │   ├── traffic-generator/       # Locust load testing
-│   └── shared-python-lib/       # Shared utilities
+│   └── shared/                    # Shared utilities
 ├── kubernetes/                  # Kubernetes manifests
 │   ├── helm/                    # Helm charts
 │   ├── ingress/                 # Ingress controllers
