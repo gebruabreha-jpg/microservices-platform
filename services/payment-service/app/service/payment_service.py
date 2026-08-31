@@ -25,7 +25,9 @@ from prometheus_client import Counter, Histogram
 from app.repository.payment_repository import create_payment, get_all_payments, get_payment_by_order_id
 from app.core.database import queue_rabbitmq_job, release_db, check_dependencies
 from app.schema.payment_schema import PaymentCreate
-from shared.telemetry import get_tracer, get_meter, log_event
+from shared.tracing import get_tracer
+from shared.metrics import get_meter
+from shared.logging import log_event
 
 # =============================================================================
 # LOGGING: Structured JSON to stdout -> Promtail -> Loki

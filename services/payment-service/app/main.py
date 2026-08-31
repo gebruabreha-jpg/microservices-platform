@@ -23,7 +23,9 @@ from fastapi.responses import PlainTextResponse
 from app.routes.payment_router import router
 import threading
 from app.service.payment_service import start_kafka_consumer
-from shared.telemetry import setup_tracing, get_meter, get_logger, log_event
+from shared.tracing import setup_tracing
+from shared.metrics import get_meter
+from shared.logging import get_logger, log_event
 
 # Service identity
 os.environ.setdefault("SERVICE_NAME", "payment-service")

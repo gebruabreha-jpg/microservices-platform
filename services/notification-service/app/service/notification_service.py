@@ -25,7 +25,9 @@ from prometheus_client import Counter, Histogram
 from app.repository.notification_repository import create_notification, get_all_notifications
 from app.core.database import get_rabbitmq_connection, release_db, check_dependencies, setup_dlq
 from app.schema.notification_schema import NotificationCreate
-from shared.telemetry import get_tracer, get_meter, log_event
+from shared.tracing import get_tracer
+from shared.metrics import get_meter
+from shared.logging import log_event
 
 # =============================================================================
 # LOGGING: Structured JSON to stdout -> Promtail -> Loki

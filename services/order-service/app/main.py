@@ -22,7 +22,9 @@ import logging
 from fastapi import FastAPI, Response, Request
 from fastapi.responses import PlainTextResponse
 from app.routes.order_router import router
-from shared.telemetry import setup_tracing, get_meter, get_logger, log_event
+from shared.tracing import setup_tracing
+from shared.metrics import get_meter
+from shared.logging import get_logger, log_event
 
 # Service identity for telemetry
 os.environ.setdefault("SERVICE_NAME", "order-service")

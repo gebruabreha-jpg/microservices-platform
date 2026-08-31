@@ -9,3 +9,7 @@ except ImportError:
     kafka_breaker = None
     rabbitmq_breaker = None
     postgres_breaker = None
+
+from .tracing import setup_tracing, get_tracer, flush_telemetry
+from .metrics import get_meter
+from .logging import get_logger, log_event

@@ -25,7 +25,9 @@ from opentelemetry.trace import Status, StatusCode
 from app.repository.order_repository import create_order as create_order_repo, get_all_orders
 from app.core.database import get_db, get_redis, publish_kafka_event, release_db, check_dependencies, cache_set, cache_get, cache_delete, db_pool
 from app.schema.order_schema import OrderCreate
-from shared.telemetry import get_tracer, get_meter, get_logger, log_event
+from shared.tracing import get_tracer
+from shared.metrics import get_meter
+from shared.logging import get_logger, log_event
 
 # =============================================================================
 # TRACING: Get tracer for custom spans
