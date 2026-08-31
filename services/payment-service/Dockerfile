@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/payment-service/app/ ./app/
 COPY services/shared ./shared
+COPY services/middleware ./middleware
 
 EXPOSE 8080
 

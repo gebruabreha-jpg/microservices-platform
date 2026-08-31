@@ -18,7 +18,7 @@ LOGGING:
 
 import os
 import logging
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from app.routes.notification_router import router
 import threading
@@ -26,6 +26,7 @@ from app.service.notification_service import start_consumer, start_dlq_consumer
 from shared.tracing import setup_tracing, flush_telemetry
 from shared.metrics import get_meter
 from shared.logging import get_logger, log_event
+from middleware import CorrelationIdMiddleware
 
 # Service identity
 os.environ.setdefault("SERVICE_NAME", "notification-service")
@@ -38,6 +39,7 @@ os.environ.setdefault("ENVIRONMENT", "development")
 logger = get_logger("notification-service")
 
 app = FastAPI(title="notification-service")
+app.add_middleware(CorrelationIdMiddleware)
 app.include_router(router)
 
 setup_tracing(app, os.getenv("SERVICE_NAME"))
@@ -60,12 +62,6 @@ dlq_counter = meter.create_counter(
     "notification_dlq_total",
     description="Messages sent to DLQ"
 )
-
-# =============================================================================
-# FASTAPI APP
-# =============================================================================
-app = FastAPI(title="notification-service")
-app.include_router(router)
 
 
 # =============================================================================

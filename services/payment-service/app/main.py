@@ -18,7 +18,7 @@ LOGGING:
 
 import os
 import logging
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from app.routes.payment_router import router
 import threading
@@ -26,6 +26,7 @@ from app.service.payment_service import start_kafka_consumer
 from shared.tracing import setup_tracing
 from shared.metrics import get_meter
 from shared.logging import get_logger, log_event
+from middleware import CorrelationIdMiddleware
 
 # Service identity
 os.environ.setdefault("SERVICE_NAME", "payment-service")
@@ -38,6 +39,7 @@ os.environ.setdefault("ENVIRONMENT", "development")
 logger = get_logger("payment-service")
 
 app = FastAPI(title="payment-service")
+app.add_middleware(CorrelationIdMiddleware)
 app.include_router(router)
 
 setup_tracing(app, os.getenv("SERVICE_NAME"))
@@ -56,12 +58,6 @@ request_duration = meter.create_histogram(
     description="Payment request duration in seconds",
     unit="s"
 )
-
-# =============================================================================
-# FASTAPI APP
-# =============================================================================
-app = FastAPI(title="payment-service")
-app.include_router(router)
 
 
 # =============================================================================

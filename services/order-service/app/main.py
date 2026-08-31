@@ -17,14 +17,14 @@ LOGGING:
   - Logs include trace_id/span_id for correlation with traces
 """
 import os
-import uuid
 import logging
-from fastapi import FastAPI, Response, Request
+from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from app.routes.order_router import router
 from shared.tracing import setup_tracing
 from shared.metrics import get_meter
 from shared.logging import get_logger, log_event
+from middleware import CorrelationIdMiddleware
 
 # Service identity for telemetry
 os.environ.setdefault("SERVICE_NAME", "order-service")
@@ -36,19 +36,8 @@ logger = get_logger("order-service")
 #Create app
 app = FastAPI(title="order-service")
 
-#Add correlation ID middleware
-"""
-Middleware to add a correlation ID to each request for tracing/logging correlation.
-If the client provides a 'X-Correlation-ID' header, use that; otherwise, generate a new UUID.
-"""
-@app.middleware("http")
-async def add_correlation_id(request: Request, call_next):
-    correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
-    request.state.correlation_id = correlation_id
-    response: Response = await call_next(request)
-    response.headers["X-Correlation-ID"] = correlation_id
-    logger.info(f"{request.method} {request.url.path}", extra={"correlation_id": correlation_id})
-    return response
+#Add correlation ID middleware (shared)
+app.add_middleware(CorrelationIdMiddleware)
 
 # set up Rate limiting
 try:
