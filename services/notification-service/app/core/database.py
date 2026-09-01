@@ -61,7 +61,8 @@ def setup_dlq(channel):
 
 def queue_rabbitmq_job(queue, message):
     if rabbitmq_breaker:
-        queue_rabbitmq_job_impl(queue, message)
+        with rabbitmq_breaker:
+            queue_rabbitmq_job_impl(queue, message)
     else:
         queue_rabbitmq_job_impl(queue, message)
 
@@ -82,15 +83,16 @@ def queue_rabbitmq_job_impl(queue, message):
 
 def check_dependencies():
     checks = {}
+    conn = None
     try:
         conn = get_db()
         conn.cursor().execute("SELECT 1")
-        conn.close()
-        if db_pool:
-            release_db(conn)
         checks["postgres"] = True
     except Exception:
         checks["postgres"] = False
+    finally:
+        if conn:
+            release_db(conn)
 
     try:
         connection = get_rabbitmq_connection()

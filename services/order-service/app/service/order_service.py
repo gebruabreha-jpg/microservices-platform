@@ -39,13 +39,13 @@ cache_miss_counter = metric.create_counter(
 )
 
 
-def health_check():
-    deps = check_dependencies()
+async def health_check():
+    deps = await check_dependencies()
     status = "ok" if all(deps.values()) else "degraded"
     return {"status": status, "service": "order-service", "dependencies": deps}
 
 
-def create_order(order: OrderCreate, request_id=None):
+async def create_order(order: OrderCreate, request_id=None):
     start = time.time()
     correlation_id = request_id or str(uuid.uuid4())
 
@@ -103,7 +103,7 @@ def create_order(order: OrderCreate, request_id=None):
                 release_db(conn)
 
 
-def list_orders(limit=20, offset=0):
+async def list_orders(limit=20, offset=0):
     cache_key = f"orders:list:{limit}:{offset}"
     cached = cache_get(cache_key)
     if cached:
@@ -127,7 +127,7 @@ def list_orders(limit=20, offset=0):
     return result
 
 
-def _invalidate_list_cache():
+async def _invalidate_list_cache():
     """Invalidate all list cache entries using SCAN + DELETE."""
     r = get_redis()
     if r:

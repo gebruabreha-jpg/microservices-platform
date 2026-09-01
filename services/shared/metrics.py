@@ -34,7 +34,7 @@ _metric_provider = MetricProvider(resource=_resource, metric_readers=[_metric_re
 
 
 #Returns a Meter to create counters/histograms
-def get_metric():
+async def get_metric():
     """
     Get the OTLP metrics meter.
 

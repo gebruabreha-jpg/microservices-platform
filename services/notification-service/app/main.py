@@ -61,7 +61,7 @@ app.include_router(router)
 
 @app.get("/")
 async def root():
-    return {"message": "order API"}
+    return {"message": "notification API"}
 
 
 @app.get("/health")
