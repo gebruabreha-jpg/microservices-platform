@@ -10,14 +10,14 @@ router = APIRouter()
 
 
 @router.post("/orders", response_model=OrderResponse)
-def post_order(request: Request, order: OrderCreate):
+async def post_order(request: Request, order: OrderCreate):
     """Create a new order."""
     correlation_id = request.state.correlation_id
-    return create_order(order, request_id=correlation_id)
+    return await create_order(order, request_id=correlation_id)
 
 
 
 @router.get("/orders", response_model=list[OrderResponse])
-def get_orders(request: Request, limit: int = 20, offset: int = 0):
+async def get_orders(request: Request, limit: int = 20, offset: int = 0):
     """List orders with pagination."""
-    return list_orders(limit=limit, offset=offset)
+    return await list_orders(limit=limit, offset=offset)
