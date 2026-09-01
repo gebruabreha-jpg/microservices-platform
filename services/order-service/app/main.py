@@ -64,6 +64,16 @@ async def root():
     return {"message": "order API"}
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+async def readiness():
+    return {"ready": True}
+
+
 @app.on_event("shutdown")
 def shutdown():
     log_event(logger, "info", "Shutting down order-service")
