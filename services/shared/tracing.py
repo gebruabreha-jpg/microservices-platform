@@ -1,5 +1,6 @@
 """
 Order Service - Main Application Entry Point
+
 Responsibilities:
 - Create FastAPI app
 - Register middleware (correlation ID, rate limiting)
@@ -20,11 +21,6 @@ os.environ.setdefault("SERVICE_NAME", "order-service")
 os.environ.setdefault("SERVICE_VERSION", "1.0.0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
-#If tracing/metrics setup fails, we need logging to debug it 
-#so that is whywe put first the logger setup
-# ═══════════════════════════════════════════════════════════════
-# 1. LOGGER FIRST — so you can log any setup errors below
-# ═══════════════════════════════════════════════════════════════
 logger = get_logger("order-service")
 
 # Create app
@@ -33,16 +29,21 @@ app = FastAPI(title="order-service")
 # Middleware
 app.add_middleware(CorrelationIdMiddleware)
 
-# Observability initialization
-# ═══════════════════════════════════════════════════════════════
-# 2. TRACING SECOND — instrument the app
-# ═══════════════════════════════════════════════════════════════
+# Rate limiting
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_ipaddr
+    from slowapi.errors import RateLimitExceeded
+    limiter = Limiter(key_func=get_ipaddr, default_limits=["100/minute"])
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+except ImportError:
+    logger.warning("slowapi not installed, rate limiting disabled")
+
+# Observability
 setup_tracing(app, os.getenv("SERVICE_NAME"))
 
-
-# ═══════════════════════════════════════════════════════════════
-# 3. METRICS THIRD — create metric instruments
-# ═══════════════════════════════════════════════════════════════
+# Metrics - basic HTTP request metrics
 meter = get_meter()
 request_counter = meter.create_counter(
     "http_requests_total",
