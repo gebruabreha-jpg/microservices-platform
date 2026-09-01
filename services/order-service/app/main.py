@@ -49,7 +49,7 @@ request_counter = metric.create_counter(
     description="Total HTTP requests",
     unit="1",
 )
-request_duration = meter.create_histogram(
+request_duration = metric.create_histogram(
     "http_request_duration_seconds",
     description="HTTP request duration in seconds",
     unit="s",
