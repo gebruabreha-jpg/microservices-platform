@@ -16,7 +16,7 @@ from shared.logging import get_logger, log_event
 from middleware import CorrelationIdMiddleware
 
 # Service identity for telemetry
-os.environ.setdefault("SERVICE_NAME", "order-service")
+os.environ.setdefault("SERVICE_NAME", "notification-service")
 os.environ.setdefault("SERVICE_VERSION", "1.0.0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
@@ -25,10 +25,10 @@ os.environ.setdefault("ENVIRONMENT", "development")
 # ═══════════════════════════════════════════════════════════════
 # 1. LOGGER FIRST — so you can log any setup errors below
 # ═══════════════════════════════════════════════════════════════
-logger = get_logger("order-service")
+logger = get_logger("notification-service")
 
 # Create app
-app = FastAPI(title="order-service")
+app = FastAPI(title="notification-service")
 
 # Middleware
 app.add_middleware(CorrelationIdMiddleware)
@@ -66,5 +66,5 @@ async def root():
 
 @app.on_event("shutdown")
 def shutdown():
-    log_event(logger, "info", "Shutting down order-service")
+    log_event(logger, "info", "Shutting down notification-service")
     flush_telemetry()
