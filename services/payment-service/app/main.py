@@ -1,5 +1,5 @@
 """
-Payment Service - Main Application Entry Point
+Payment Service - Main Application Entry Point.
 
 TRACING:
   - FastAPI auto-instrumentation creates spans for every HTTP request
@@ -17,14 +17,12 @@ LOGGING:
 """
 
 import os
-import logging
+import threading
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from app.routes.payment_router import router
-import threading
 from app.service.payment_service import start_kafka_consumer
 from shared.tracing import setup_tracing
-from shared.metrics import get_meter
 from shared.logging import get_logger, log_event
 from middleware import CorrelationIdMiddleware
 
@@ -43,22 +41,6 @@ app.add_middleware(CorrelationIdMiddleware)
 app.include_router(router)
 
 setup_tracing(app, os.getenv("SERVICE_NAME"))
-
-# =============================================================================
-# METRICS: OTLP metrics -> Prometheus (via OTel Collector)
-# =============================================================================
-meter = get_meter()
-request_counter = meter.create_counter(
-    "payment_requests_total",
-    description="Total payment requests",
-    unit="1"
-)
-request_duration = meter.create_histogram(
-    "payment_request_duration_seconds",
-    description="Payment request duration in seconds",
-    unit="s"
-)
-
 
 # =============================================================================
 # METRICS ENDPOINT: Prometheus text format
@@ -86,6 +68,24 @@ try:
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 except ImportError:
     pass
+
+
+# =============================================================================
+# HEALTH CHECKS: For K8s liveness/readiness probes
+# =============================================================================
+@app.get("/health")
+async def health():
+    """Liveness probe - returns 200 if service is running."""
+    return {"status": "ok", "service": "payment-service"}
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness probe - returns 200 if service can handle requests."""
+    from app.core.database import check_dependencies
+    deps = check_dependencies()
+    status = "ok" if all(deps.values()) else "degraded"
+    return {"status": status, "dependencies": deps}
 
 
 # =============================================================================

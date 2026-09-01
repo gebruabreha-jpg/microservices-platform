@@ -1,5 +1,5 @@
 """
-Payment Service - Business Logic
+Payment Service - Business Logic.
 
 TRACING:
   Custom spans wrap payment processing and Kafka consumption:
@@ -19,20 +19,18 @@ import json
 import os
 import time
 import uuid
-import logging
 from opentelemetry.trace import Status, StatusCode
-from prometheus_client import Counter, Histogram
 from app.repository.payment_repository import create_payment, get_all_payments, get_payment_by_order_id
 from app.core.database import queue_rabbitmq_job, release_db, check_dependencies
 from app.schema.payment_schema import PaymentCreate
 from shared.tracing import get_tracer
-from shared.metrics import get_meter
-from shared.logging import log_event
+from shared.metrics import get_metric
+from shared.logging import get_logger, log_event
 
 # =============================================================================
 # LOGGING: Structured JSON to stdout -> Promtail -> Loki
 # =============================================================================
-logger = logging.getLogger("payment-service")
+logger = get_logger("payment-service")
 
 # =============================================================================
 # TRACING: Get tracer for custom spans
@@ -40,29 +38,19 @@ logger = logging.getLogger("payment-service")
 tracer = get_tracer("payment-service")
 
 # =============================================================================
-# METRICS: OTLP metrics (primary) + Prometheus client (fallback)
+# METRICS: OTLP metrics
 # =============================================================================
-meter = get_meter()
-
-try:
-    otlp_request_count = meter.create_counter(
-        "payment_requests_total",
-        description="Total payment requests",
-        unit="1"
-    )
-    otlp_request_duration = meter.create_histogram(
-        "payment_request_duration_seconds",
-        description="Payment request duration in seconds",
-        unit="s"
-    )
-
-    REQUEST_COUNT = Counter("payment_requests_total", "Total payment requests", ["method", "endpoint", "status"])
-    REQUEST_LATENCY = Histogram("payment_request_latency_seconds", "Payment request latency", ["endpoint"])
-except ImportError:
-    otlp_request_count = None
-    otlp_request_duration = None
-    REQUEST_COUNT = None
-    REQUEST_LATENCY = None
+metric = get_metric()
+request_counter = metric.create_counter(
+    "payment_requests_total",
+    description="Total payment requests",
+    unit="1"
+)
+request_duration = metric.create_histogram(
+    "payment_request_duration_seconds",
+    description="Payment request duration in seconds",
+    unit="s"
+)
 
 
 # =============================================================================
@@ -72,13 +60,6 @@ def health_check():
     deps = check_dependencies()
     status = "ok" if all(deps.values()) else "degraded"
     return {"status": status, "service": "payment-service", "dependencies": deps}
-
-
-# =============================================================================
-# LEGACY METRICS (kept for /metrics endpoint)
-# =============================================================================
-def get_metrics():
-    return {"service": "payment-service"}
 
 
 # =============================================================================
@@ -143,20 +124,14 @@ def process_payment(payment: PaymentCreate, request_id=None):
             # =========================================================================
             # METRICS: Record success
             # =========================================================================
-            if otlp_request_count:
-                otlp_request_count.add(1, {"method": "POST", "endpoint": "/payments", "status": "success"})
-            if REQUEST_COUNT:
-                REQUEST_COUNT.labels(method="POST", endpoint="/payments", status="success").inc()
+            request_counter.add(1, {"method": "POST", "endpoint": "/payments", "status": "success"})
 
             log_event(logger, "info", "Payment processed", payment_id=payment_id, correlation_id=correlation_id)
             span.set_status(Status(StatusCode.OK))
             return {"id": payment_id, "status": "processing", "correlation_id": correlation_id}
 
         except Exception as e:
-            if otlp_request_count:
-                otlp_request_count.add(1, {"method": "POST", "endpoint": "/payments", "status": "error"})
-            if REQUEST_COUNT:
-                REQUEST_COUNT.labels(method="POST", endpoint="/payments", status="error").inc()
+            request_counter.add(1, {"method": "POST", "endpoint": "/payments", "status": "error"})
 
             log_event(logger, "error", "Payment processing failed", error=str(e), correlation_id=correlation_id)
             span.set_status(Status(StatusCode.ERROR, str(e)))
@@ -164,10 +139,7 @@ def process_payment(payment: PaymentCreate, request_id=None):
             raise
         finally:
             duration = time.time() - start
-            if otlp_request_duration:
-                otlp_request_duration.record(duration, {"endpoint": "/payments"})
-            if REQUEST_LATENCY:
-                REQUEST_LATENCY.labels(endpoint="/payments").observe(duration)
+            request_duration.record(duration, {"endpoint": "/payments"})
             if conn:
                 release_db(conn)
 
@@ -208,5 +180,6 @@ def start_kafka_consumer():
                         span.set_attribute("messaging.consumer_group", "payment-service")
                         span.set_attribute("order.id", event.get("order_id"))
                         create_payment_from_event(event)
-        except Exception:
-            pass
+        except Exception as e:
+            log_event(logger, "error", "Kafka consumer error", error=str(e))
+            time.sleep(5)

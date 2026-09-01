@@ -1,24 +1,22 @@
-import os
-import json
-import pika
-import psycopg2
-from psycopg2 import pool
+"""
+Database utilities for Payment Service.
 
+Only contains service-specific utilities.
+Connection factories are in shared/implementations/.
+"""
+
+from shared.implementations import create_db_pool, get_rabbitmq_connection_factory
 from resilience import default_retry
 from resilience.circuit_breaker import rabbitmq_breaker
 
-try:
-    db_pool = pool.ThreadedConnectionPool(
-        minconn=1,
-        maxconn=int(os.getenv("POSTGRES_POOL_SIZE", 10)),
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=int(os.getenv("POSTGRES_PORT", 5432)),
-        dbname=os.getenv("POSTGRES_DB", "appdb"),
-        user=os.getenv("POSTGRES_USER", "admin"),
-        password=os.getenv("POSTGRES_PASSWORD", "secret"),
-    )
-except Exception:
-    db_pool = None
+import os
+import json
+import psycopg2
+import pika
+
+# Create connection pool and factory at module level
+db_pool = create_db_pool()
+rabbitmq_factory = get_rabbitmq_connection_factory()
 
 
 def get_db():
@@ -40,29 +38,17 @@ def release_db(conn):
         conn.close()
 
 
-def get_rabbitmq_connection():
-    return pika.BlockingConnection(
-        pika.ConnectionParameters(
-            host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
-            port=5672,
-            credentials=pika.PlainCredentials(
-                os.getenv("RABBITMQ_USER", "admin"),
-                os.getenv("RABBITMQ_PASS", "secret"),
-            ),
-        )
-    )
-
-
 def queue_rabbitmq_job(queue, message):
     if rabbitmq_breaker:
-        queue_rabbitmq_job_impl(queue, message)
+        with rabbitmq_breaker:
+            _queue_rabbitmq_job_impl(queue, message)
     else:
-        queue_rabbitmq_job_impl(queue, message)
+        _queue_rabbitmq_job_impl(queue, message)
 
 
 @default_retry
-def queue_rabbitmq_job_impl(queue, message):
-    connection = get_rabbitmq_connection()
+def _queue_rabbitmq_job_impl(queue, message):
+    connection = rabbitmq_factory()
     channel = connection.channel()
     channel.queue_declare(queue=queue, durable=True)
     channel.basic_publish(
@@ -76,18 +62,19 @@ def queue_rabbitmq_job_impl(queue, message):
 
 def check_dependencies():
     checks = {}
+    conn = None
     try:
         conn = get_db()
         conn.cursor().execute("SELECT 1")
-        conn.close()
-        if db_pool:
-            release_db(conn)
         checks["postgres"] = True
     except Exception:
         checks["postgres"] = False
+    finally:
+        if conn:
+            release_db(conn)
 
     try:
-        connection = get_rabbitmq_connection()
+        connection = rabbitmq_factory()
         connection.close()
         checks["rabbitmq"] = True
     except Exception:

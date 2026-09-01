@@ -51,6 +51,25 @@ class NotificationRepository(Repository):
         ...
 
 
+class PaymentRepository(Repository):
+    """Interface for payment data access."""
+
+    @abstractmethod
+    async def create(self, payment_data: Any) -> int:
+        """Create a new payment and return its ID."""
+        ...
+
+    @abstractmethod
+    async def get_all(self, limit: int = 20, offset: int = 0) -> List[Dict]:
+        """Get all payments with pagination."""
+        ...
+
+    @abstractmethod
+    async def get_by_order_id(self, order_id: int) -> Optional[Dict]:
+        """Get payment by order ID (for idempotency checks."""
+        ...
+
+
 class CacheClient(ABC):
     """Interface for cache operations."""
 

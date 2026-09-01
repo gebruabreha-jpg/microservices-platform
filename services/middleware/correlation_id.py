@@ -7,12 +7,12 @@ the request/response lifecycle.
 """
 
 import uuid
-import logging
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request
 
+from shared.logging import get_logger, log_event
 
-logger = logging.getLogger("middleware")
+logger = get_logger("middleware")
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -34,8 +34,10 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["X-Correlation-ID"] = correlation_id
 
-        logger.info(
+        log_event(
+            logger,
+            "info",
             f"{request.method} {request.url.path}",
-            extra={"correlation_id": correlation_id},
+            correlation_id=correlation_id,
         )
         return response

@@ -101,3 +101,22 @@ For enterprise scale, you'd need Clean Architecture + CQRS + full testing.
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 DONE
+
+
+
+Objective:-
+Build a complete functional microservices platform (order, payment, notification services) with Clean Architecture, proper observability, resilience patterns, and DRY code organization
+
+Important Details
+3 microservices + shared library + traffic generator + docker-compose infrastructure
+middleware/ and resilience/ are separate packages (not merged)
+shared/ contains observability only: tracing, metrics, logging
+shared/implementations/ contains all shared connection factories and implementations (DRY)
+resilience/ contains circuit_breaker.py and retry.py
+Health checks belong in main.py (not router) for K8s probes
+Service-specific metric names preferred: order_requests_total over http_requests_total
+Used get_metric() function name and metric variable name
+Repository files are separate modules (not deleted)
+Clean Architecture: Domain at core, dependencies point inward
+CQRS: Separate reads from writes
+Full testing: Unit + Integration + E2E test pyramid
