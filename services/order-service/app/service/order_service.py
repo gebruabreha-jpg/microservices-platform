@@ -9,30 +9,30 @@ from app.repository.order_repository import create_order as create_order_repo, g
 from app.core.database import get_db, get_redis, publish_kafka_event, release_db, check_dependencies, cache_set, cache_get, cache_delete, db_pool
 from app.schema.order_schema import OrderCreate
 from shared.tracing import get_tracer
-from shared.metrics import get_meteric
+from shared.metrics import get_metric
 from shared.logging import get_logger, log_event
 
 tracer = get_tracer("order-service")
 
 logger = get_logger("order-service")
 
-meteric = get_meteric()
-order_counter = meteric.create_counter(
+metric = get_metric()
+order_counter = metric.create_counter(
     "order_requests_total",
     description="Total order requests",
     unit="1",
 )
-order_duration = meter.create_histogram(
+order_duration = metric.create_histogram(
     "order_request_duration_seconds",
     description="Order request duration in seconds",
     unit="s",
 )
-cache_hit_counter = meter.create_counter(
+cache_hit_counter = metric.create_counter(
     "order_cache_hits_total",
     description="Cache hits",
     unit="1",
 )
-cache_miss_counter = meter.create_counter(
+cache_miss_counter = metric.create_counter(
     "order_cache_misses_total",
     description="Cache misses",
     unit="1",

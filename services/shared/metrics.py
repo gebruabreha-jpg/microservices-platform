@@ -26,10 +26,10 @@ _metric_reader = PeriodicExportingMetricReader(
     OTLPMetricExporter(endpoint=os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://otel-collector:4317")),
     export_interval_millis=15000,  # export every 15s
 )
-_meter_provider = MeterProvider(resource=_resource, metric_readers=[_metric_reader])
+_metric_provider = MetricProvider(resource=_resource, metric_readers=[_metric_reader])
 
 
-def get_meter():
+def get_metric():
     """
     Get the OTLP metrics meter.
 
