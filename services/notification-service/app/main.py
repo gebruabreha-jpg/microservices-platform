@@ -1,114 +1,70 @@
 """
-Notification Service - Main Application Entry Point
-
-TRACING:
-  - FastAPI auto-instrumentation creates spans for every HTTP request
-  - Custom spans track notification sending and RabbitMQ consumption
-  - All spans exported via OTLP to Tempo
-
-METRICS:
-  - HTTP request duration histogram exported via OTLP
-  - DLQ message counter exported via OTLP
-  - Prometheus /metrics endpoint for direct scraping
-
-LOGGING:
-  - Structured JSON logs to stdout (Promtail -> Loki)
-  - Includes trace_id/span_id for correlation with traces
+Order Service - Main Application Entry Point
+Responsibilities:
+- Create FastAPI app
+- Register middleware (correlation ID, rate limiting)
+- Set up observability (tracing, metrics, logging)
+- Include routes
 """
 
 import os
-import logging
 from fastapi import FastAPI
-from fastapi.responses import PlainTextResponse
-from app.routes.notification_router import router
-import threading
-from app.service.notification_service import start_consumer, start_dlq_consumer
+from app.routes.order_router import router
 from shared.tracing import setup_tracing, flush_telemetry
 from shared.metrics import get_meter
 from shared.logging import get_logger, log_event
 from middleware import CorrelationIdMiddleware
 
-# Service identity
-os.environ.setdefault("SERVICE_NAME", "notification-service")
+# Service identity for telemetry
+os.environ.setdefault("SERVICE_NAME", "order-service")
 os.environ.setdefault("SERVICE_VERSION", "1.0.0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
-# =============================================================================
-# LOGGING: Structured JSON to stdout -> Promtail -> Loki
-# =============================================================================
-logger = get_logger("notification-service")
+#If tracing/metrics setup fails, we need logging to debug it 
+#so that is whywe put first the logger setup
+# ═══════════════════════════════════════════════════════════════
+# 1. LOGGER FIRST — so you can log any setup errors below
+# ═══════════════════════════════════════════════════════════════
+logger = get_logger("order-service")
 
-app = FastAPI(title="notification-service")
+# Create app
+app = FastAPI(title="order-service")
+
+# Middleware
 app.add_middleware(CorrelationIdMiddleware)
-app.include_router(router)
 
+# Observability initialization
+# ═══════════════════════════════════════════════════════════════
+# 2. TRACING SECOND — instrument the app
+# ═══════════════════════════════════════════════════════════════
 setup_tracing(app, os.getenv("SERVICE_NAME"))
 
-# =============================================================================
-# METRICS: OTLP metrics -> Prometheus (via OTel Collector)
-# =============================================================================
+
+# ═══════════════════════════════════════════════════════════════
+# 3. METRICS THIRD — create metric instruments
+# ═══════════════════════════════════════════════════════════════
 meter = get_meter()
 request_counter = meter.create_counter(
-    "notification_requests_total",
-    description="Total notification requests",
-    unit="1"
+    "http_requests_total",
+    description="Total HTTP requests",
+    unit="1",
 )
 request_duration = meter.create_histogram(
-    "notification_request_duration_seconds",
-    description="Notification request duration in seconds",
-    unit="s"
-)
-dlq_counter = meter.create_counter(
-    "notification_dlq_total",
-    description="Messages sent to DLQ"
+    "http_request_duration_seconds",
+    description="HTTP request duration in seconds",
+    unit="s",
 )
 
-
-# =============================================================================
-# METRICS ENDPOINT: Prometheus text format
-# =============================================================================
-try:
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-
-    @app.get("/metrics")
-    async def metrics_prometheus():
-        """Return Prometheus-formatted metrics for direct scraping."""
-        return PlainTextResponse(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
-except ImportError:
-    pass
-
-
-# =============================================================================
-# RATE LIMITING
-# =============================================================================
-try:
-    from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.util import get_ipaddr
-    from slowapi.errors import RateLimitExceeded
-    limiter = Limiter(key_func=get_ipaddr, default_limits=["100/minute"])
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-except ImportError:
-    pass
-
-
-# =============================================================================
-# BACKGROUND CONSUMERS: RabbitMQ consumers run in daemon threads
-# =============================================================================
-consumer_thread = threading.Thread(target=start_consumer, daemon=True)
-consumer_thread.start()
-
-dlq_thread = threading.Thread(target=start_dlq_consumer, daemon=True)
-dlq_thread.start()
+# Routes
+app.include_router(router)
 
 
 @app.get("/")
 async def root():
-    return {"message": "notification API"}
-
+    return {"message": "order API"}
 
 
 @app.on_event("shutdown")
 def shutdown():
     log_event(logger, "info", "Shutting down order-service")
-    flush_telemetry()  # All OTel logic stays in shared module
+    flush_telemetry()
