@@ -43,7 +43,7 @@ setup_tracing(app, os.getenv("SERVICE_NAME"))
 # ═══════════════════════════════════════════════════════════════
 # 3. METRICS THIRD — create metric instruments
 # ═══════════════════════════════════════════════════════════════
-meter = get_meter()
+meter = get_metric()
 request_counter = meter.create_counter(
     "http_requests_total",
     description="Total HTTP requests",
@@ -73,7 +73,7 @@ async def health():
 async def readiness():
     return {"ready": True}
 
-    
+
 @app.on_event("shutdown")
 def shutdown():
     log_event(logger, "info", "Shutting down notification-service")

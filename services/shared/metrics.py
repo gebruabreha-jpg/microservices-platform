@@ -22,6 +22,7 @@ from shared.tracing import _resource
 # =============================================================================
 # METRICS: OTLP metrics -> Prometheus (via OTel Collector)
 # =============================================================================
+
 #Exports metrics every 15s via OTLP gRPC
 _metric_reader = PeriodicExportingMetricReader(
     OTLPMetricExporter(endpoint=os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://otel-collector:4317")),
