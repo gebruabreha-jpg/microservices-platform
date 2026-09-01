@@ -1,162 +1,149 @@
 """
-Payment Service - Business Logic.
+Payment Service - Business Logic (OOP + DI).
 
-TRACING:
-  Custom spans wrap payment processing and Kafka consumption:
-  - Kafka message consumption spans
-  - Database insert spans
-  - RabbitMQ publish spans
-
-METRICS:
-  - payment_requests_total counter (OTLP)
-  - payment_request_duration_seconds histogram (OTLP)
-
-LOGGING:
-  Structured JSON logs with trace_id/span_id for correlation.
+Follows:
+- Single Responsibility Principle: Each method does one thing
+- Dependency Inversion: Depends on interfaces, not implementations
+- Open/Closed: Can extend without modifying
 """
 
 import json
 import os
 import time
 import uuid
+from typing import Optional, List, Dict
 from opentelemetry.trace import Status, StatusCode
-from app.repository.payment_repository import create_payment, get_all_payments, get_payment_by_order_id
-from app.core.database import queue_rabbitmq_job, release_db, check_dependencies
-from app.schema.payment_schema import PaymentCreate
+
+from shared.interfaces import (
+    PaymentRepository,
+    EventPublisher,
+    MetricsClient,
+    Logger,
+    HealthChecker,
+)
 from shared.tracing import get_tracer
-from shared.metrics import get_metric
-from shared.logging import get_logger, log_event
-
-# =============================================================================
-# LOGGING: Structured JSON to stdout -> Promtail -> Loki
-# =============================================================================
-logger = get_logger("payment-service")
-
-# =============================================================================
-# TRACING: Get tracer for custom spans
-# =============================================================================
-tracer = get_tracer("payment-service")
-
-# =============================================================================
-# METRICS: OTLP metrics
-# =============================================================================
-metric = get_metric()
-request_counter = metric.create_counter(
-    "payment_requests_total",
-    description="Total payment requests",
-    unit="1"
-)
-request_duration = metric.create_histogram(
-    "payment_request_duration_seconds",
-    description="Payment request duration in seconds",
-    unit="s"
-)
+from app.schema.payment_schema import PaymentCreate
 
 
-# =============================================================================
-# HEALTH CHECK
-# =============================================================================
-def health_check():
-    deps = check_dependencies()
-    status = "ok" if all(deps.values()) else "degraded"
-    return {"status": status, "service": "payment-service", "dependencies": deps}
+class PaymentService:
+    """
+    Payment service with dependency injection.
 
+    All dependencies are injected through the constructor,
+    following the Dependency Inversion Principle.
+    """
 
-# =============================================================================
-# PAYMENT OPERATIONS
-# =============================================================================
-def list_payments(limit=20, offset=0):
-    rows = get_all_payments(limit=limit, offset=offset)
-    return [
-        {
-            "id": r[0],
-            "order_id": r[1],
-            "amount": float(r[2]),
-            "status": r[3],
-        }
-        for r in rows
-    ]
+    def __init__(
+        self,
+        payment_repository: PaymentRepository,
+        event_publisher: EventPublisher,
+        metrics: MetricsClient,
+        logger: Logger,
+        health_checker: HealthChecker,
+    ):
+        self._payment_repository = payment_repository
+        self._event_publisher = event_publisher
+        self._metrics = metrics
+        self._logger = logger
+        self._health_checker = health_checker
+        self._tracer = get_tracer("payment-service")
 
+        # Initialize metrics
+        self._payment_counter = metrics.create_counter(
+            "payment_requests_total",
+            description="Total payment requests",
+            unit="1",
+        )
+        self._payment_duration = metrics.create_histogram(
+            "payment_request_duration_seconds",
+            description="Payment request duration in seconds",
+            unit="s",
+        )
 
-def process_payment(payment: PaymentCreate, request_id=None):
-    start = time.time()
-    correlation_id = request_id or str(uuid.uuid4())
-    conn = None
+    async def health_check(self) -> Dict:
+        """Check service health."""
+        deps = await self._health_checker.check()
+        status = "ok" if all(deps.values()) else "degraded"
+        return {"status": status, "service": "payment-service", "dependencies": deps}
 
-    # =========================================================================
-    # TRACING: Custom span for payment processing
-    # =========================================================================
-    with tracer.start_as_current_span("process_payment") as span:
-        span.set_attribute("payment.order_id", payment.order_id)
-        span.set_attribute("payment.amount", payment.amount)
-        span.set_attribute("correlation_id", correlation_id)
+    async def list_payments(self, limit: int = 20, offset: int = 0) -> List[Dict]:
+        """List payments with pagination."""
+        return await self._payment_repository.get_all(limit=limit, offset=offset)
 
-        try:
-            # Idempotency check
-            existing = get_payment_by_order_id(payment.order_id)
-            if existing:
-                span.set_attribute("payment.idempotent", True)
-                return {"id": existing[0], "status": existing[3], "correlation_id": correlation_id, "message": "idempotent"}
+    async def process_payment(self, payment: PaymentCreate, request_id: Optional[str] = None) -> Dict:
+        """Process a new payment."""
+        start = time.time()
+        correlation_id = request_id or str(uuid.uuid4())
 
-            # =========================================================================
-            # TRACING: Database insert span
-            # =========================================================================
-            with tracer.start_as_current_span("db.insert_payment") as db_span:
-                conn = get_db()
-                payment_id = create_payment(payment, conn)
-                db_span.set_attribute("db.rows_affected", 1)
-                db_span.set_attribute("payment.id", payment_id)
+        with self._tracer.start_as_current_span("process_payment") as span:
+            span.set_attribute("payment.order_id", payment.order_id)
+            span.set_attribute("payment.amount", payment.amount)
+            span.set_attribute("correlation_id", correlation_id)
 
-            # =========================================================================
-            # TRACING: RabbitMQ publish span
-            # =========================================================================
-            with tracer.start_as_current_span("rabbitmq.publish_notification") as mq_span:
-                queue_rabbitmq_job("notifications", {
-                    "type": "payment_received",
-                    "payment_id": payment_id,
-                    "order_id": payment.order_id,
-                    "correlation_id": correlation_id,
-                })
-                mq_span.set_attribute("messaging.system", "rabbitmq")
-                mq_span.set_attribute("messaging.destination", "notifications")
-                mq_span.set_attribute("payment.id", payment_id)
+            try:
+                # Idempotency check
+                existing = await self._payment_repository.get_by_order_id(payment.order_id)
+                if existing:
+                    span.set_attribute("payment.idempotent", True)
+                    return {"id": existing["id"], "status": existing["status"], "correlation_id": correlation_id, "message": "idempotent"}
 
-            # =========================================================================
-            # METRICS: Record success
-            # =========================================================================
-            request_counter.add(1, {"method": "POST", "endpoint": "/payments", "status": "success"})
+                # Database operation
+                with self._tracer.start_as_current_span("db.insert_payment") as db_span:
+                    payment_id = await self._payment_repository.create(payment)
+                    db_span.set_attribute("payment.id", payment_id)
 
-            log_event(logger, "info", "Payment processed", payment_id=payment_id, correlation_id=correlation_id)
-            span.set_status(Status(StatusCode.OK))
-            return {"id": payment_id, "status": "processing", "correlation_id": correlation_id}
+                # Publish event
+                with self._tracer.start_as_current_span("rabbitmq.publish_notification") as mq_span:
+                    await self._event_publisher.publish("notifications", {
+                        "type": "payment_received",
+                        "payment_id": payment_id,
+                        "order_id": payment.order_id,
+                        "correlation_id": correlation_id,
+                    })
+                    mq_span.set_attribute("messaging.system", "rabbitmq")
+                    mq_span.set_attribute("messaging.destination", "notifications")
+                    mq_span.set_attribute("payment.id", payment_id)
 
-        except Exception as e:
-            request_counter.add(1, {"method": "POST", "endpoint": "/payments", "status": "error"})
+                # Record metrics
+                self._payment_counter.add(1, {"method": "POST", "endpoint": "/payments", "status": "success"})
+                self._logger.info("Payment processed", payment_id=payment_id, correlation_id=correlation_id)
+                span.set_status(Status(StatusCode.OK))
 
-            log_event(logger, "error", "Payment processing failed", error=str(e), correlation_id=correlation_id)
-            span.set_status(Status(StatusCode.ERROR, str(e)))
-            span.record_exception(e)
-            raise
-        finally:
-            duration = time.time() - start
-            request_duration.record(duration, {"endpoint": "/payments"})
-            if conn:
-                release_db(conn)
+                return {"id": payment_id, "status": "processing", "correlation_id": correlation_id}
 
+            except Exception as e:
+                self._payment_counter.add(1, {"method": "POST", "endpoint": "/payments", "status": "error"})
+                self._logger.error("Payment processing failed", error=str(e), correlation_id=correlation_id)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
+                raise
+            finally:
+                duration = time.time() - start
+                self._payment_duration.record(duration, {"endpoint": "/payments"})
 
-def create_payment_from_event(event):
-    payment = PaymentCreate(
-        order_id=event.get("order_id"),
-        amount=event.get("amount", 0),
-        status="processing",
-    )
-    return process_payment(payment, request_id=event.get("correlation_id"))
+    async def create_payment_from_event(self, event: dict) -> Dict:
+        """Create payment from Kafka event."""
+        payment = PaymentCreate(
+            order_id=event.get("order_id"),
+            amount=event.get("amount", 0),
+            status="processing",
+        )
+        return await self.process_payment(payment, request_id=event.get("correlation_id"))
 
 
 def start_kafka_consumer():
+    """Start Kafka consumer in a background thread."""
     from kafka import KafkaConsumer
     from opentelemetry import trace
+    from shared.logging import get_logger, log_event
+
+    logger = get_logger("payment-service.kafka_consumer")
     tracer = trace.get_tracer("payment-service.kafka_consumer")
+
+    # Create service instance for handling events
+    from app.container import Container
+    container = Container()
+    service = container.get_payment_service()
 
     while True:
         try:
@@ -171,15 +158,12 @@ def start_kafka_consumer():
             for message in consumer:
                 event = message.value
                 if event.get("status") == "created":
-                    # =========================================================================
-                    # TRACING: Kafka consumption span
-                    # =========================================================================
                     with tracer.start_as_current_span("consume_order_event") as span:
                         span.set_attribute("messaging.system", "kafka")
                         span.set_attribute("messaging.topic", "orders")
                         span.set_attribute("messaging.consumer_group", "payment-service")
                         span.set_attribute("order.id", event.get("order_id"))
-                        create_payment_from_event(event)
+                        service.create_payment_from_event(event)
         except Exception as e:
             log_event(logger, "error", "Kafka consumer error", error=str(e))
             time.sleep(5)

@@ -5,14 +5,14 @@ Only contains service-specific utilities.
 Connection factories are in shared/implementations/.
 """
 
-from shared.implementations import create_db_pool, get_rabbitmq_connection_factory
-from resilience import default_retry
-from resilience.circuit_breaker import rabbitmq_breaker
-
 import os
 import json
 import psycopg2
 import pika
+
+from shared.implementations import create_db_pool, get_rabbitmq_connection_factory
+from resilience import default_retry
+from resilience.circuit_breaker import rabbitmq_breaker
 
 # Create connection pool and factory at module level
 db_pool = create_db_pool()
@@ -20,6 +20,7 @@ rabbitmq_factory = get_rabbitmq_connection_factory()
 
 
 def get_db():
+    """Get database connection from pool or create new one."""
     if db_pool:
         return db_pool.getconn()
     return psycopg2.connect(
@@ -32,6 +33,7 @@ def get_db():
 
 
 def release_db(conn):
+    """Release connection back to pool or close it."""
     if db_pool:
         db_pool.putconn(conn)
     else:
@@ -39,6 +41,7 @@ def release_db(conn):
 
 
 def queue_rabbitmq_job(queue, message):
+    """Publish message to RabbitMQ queue with circuit breaker."""
     if rabbitmq_breaker:
         with rabbitmq_breaker:
             _queue_rabbitmq_job_impl(queue, message)
@@ -48,6 +51,7 @@ def queue_rabbitmq_job(queue, message):
 
 @default_retry
 def _queue_rabbitmq_job_impl(queue, message):
+    """Internal implementation of RabbitMQ job publishing."""
     connection = rabbitmq_factory()
     channel = connection.channel()
     channel.queue_declare(queue=queue, durable=True)
@@ -61,6 +65,7 @@ def _queue_rabbitmq_job_impl(queue, message):
 
 
 def check_dependencies():
+    """Check health of all dependencies."""
     checks = {}
     conn = None
     try:

@@ -1,24 +1,28 @@
 """
 Payment Service - API Routes.
 
-METRICS ENDPOINT:
-  Returns Prometheus text format for direct scraping.
-  Primary metrics path is OTLP -> OTel Collector -> Prometheus.
+Uses DI container to get service instances.
 """
 
 from fastapi import APIRouter, Request
-from app.service.payment_service import list_payments, process_payment
+from app.container import Container
 from app.schema.payment_schema import PaymentCreate, PaymentResponse
 
 router = APIRouter()
 
+# Get service from DI container
+container = Container()
+payment_service = container.get_payment_service()
+
 
 @router.get("/payments", response_model=list[PaymentResponse])
-def get_payments(request: Request, limit: int = 20, offset: int = 0):
-    return list_payments(limit=limit, offset=offset)
+async def get_payments(request: Request, limit: int = 20, offset: int = 0):
+    """List payments with pagination."""
+    return await payment_service.list_payments(limit=limit, offset=offset)
 
 
 @router.post("/payments", response_model=PaymentResponse)
-def post_payment(request: Request, payment: PaymentCreate):
+async def post_payment(request: Request, payment: PaymentCreate):
+    """Process a new payment."""
     correlation_id = request.state.correlation_id
-    return process_payment(payment, request_id=correlation_id)
+    return await payment_service.process_payment(payment, request_id=correlation_id)

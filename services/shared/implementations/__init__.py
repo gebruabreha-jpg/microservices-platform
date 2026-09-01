@@ -208,7 +208,7 @@ class StructuredLogger(Logger):
 class DatabaseHealthChecker(HealthChecker):
     """Health checker for database dependencies."""
 
-    def __init__(self, db_pool: pool.ThreadedConnectionPool, redis_client: redis.Redis):
+    def __init__(self, db_pool: pool.ThreadedConnectionPool, redis_client: redis.Redis = None):
         self._db_pool = db_pool
         self._redis_client = redis_client
 
@@ -225,11 +225,12 @@ class DatabaseHealthChecker(HealthChecker):
             if conn:
                 self._db_pool.putconn(conn)
 
-        try:
-            self._redis_client.ping()
-            checks["redis"] = True
-        except Exception:
-            checks["redis"] = False
+        if self._redis_client:
+            try:
+                self._redis_client.ping()
+                checks["redis"] = True
+            except Exception:
+                checks["redis"] = False
 
         return checks
 
