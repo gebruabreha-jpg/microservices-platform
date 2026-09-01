@@ -2,9 +2,9 @@
 
 
 The code follows procedural programming, not OOP. It needs:-
-Classes with proper encapsulation
-Interfaces/abstractions for dependencies
-Dependency injection container
-Remove global state
-Apply Dependency Inversion Principle
+    Classes with proper encapsulation
+    Interfaces/abstractions for dependencies
+    Dependency injection container
+    Remove global state
+    Apply Dependency Inversion Principle
 
