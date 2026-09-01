@@ -9,19 +9,10 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from app.service.order_service import health_check, list_orders, create_order
-from app.schema.order_schema import OrderCreate
+from app.schema.order_schema import OrderCreate, orderResponse
 
 router = APIRouter()
-@router.get("/orders/health")
-def orders_health():
-    """Health check endpoint for the order service."""
-    return health_check()
 
-@router.get("/orders/metrics")
-def get_metrics():
-    """Return Prometheus-formatted metrics."""
-    return generate_latest()
-    
 @router.get("/orders")
 def get_orders(request: Request, limit: int = 20, offset: int = 0):
     """List orders with pagination."""
