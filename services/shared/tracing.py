@@ -1,6 +1,5 @@
 """
 Order Service - Main Application Entry Point
-
 Responsibilities:
 - Create FastAPI app
 - Register middleware (correlation ID, rate limiting)
