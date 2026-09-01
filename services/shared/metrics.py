@@ -22,13 +22,17 @@ from shared.tracing import _resource
 # =============================================================================
 # METRICS: OTLP metrics -> Prometheus (via OTel Collector)
 # =============================================================================
+#Exports metrics every 15s via OTLP gRPC
 _metric_reader = PeriodicExportingMetricReader(
     OTLPMetricExporter(endpoint=os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://otel-collector:4317")),
     export_interval_millis=15000,  # export every 15s
 )
+
+#Creates meters with service resource attributes
 _metric_provider = MetricProvider(resource=_resource, metric_readers=[_metric_reader])
 
 
+#Returns a Meter to create counters/histograms
 def get_metric():
     """
     Get the OTLP metrics meter.
