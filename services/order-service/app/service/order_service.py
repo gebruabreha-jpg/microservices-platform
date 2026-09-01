@@ -45,30 +45,6 @@ def health_check():
     return {"status": status, "service": "order-service", "dependencies": deps}
 
 
-def list_orders(limit=20, offset=0):
-    cache_key = f"orders:list:{limit}:{offset}"
-    cached = cache_get(cache_key)
-    if cached:
-        cache_hit_counter.add(1)
-        return json.loads(cached)
-
-    cache_miss_counter.add(1)
-    rows = get_all_orders(limit=limit, offset=offset)
-    result = [
-        {
-            "id": r[0],
-            "customer_id": r[1],
-            "product_id": r[2],
-            "quantity": r[3],
-            "amount": float(r[4]),
-            "status": r[5],
-        }
-        for r in rows
-    ]
-    cache_set(cache_key, json.dumps(result), ttl=60)
-    return result
-
-
 def create_order(order: OrderCreate, request_id=None):
     start = time.time()
     correlation_id = request_id or str(uuid.uuid4())
@@ -125,6 +101,30 @@ def create_order(order: OrderCreate, request_id=None):
             order_duration.record(duration, {"endpoint": "/orders"})
             if conn:
                 release_db(conn)
+
+
+def list_orders(limit=20, offset=0):
+    cache_key = f"orders:list:{limit}:{offset}"
+    cached = cache_get(cache_key)
+    if cached:
+        cache_hit_counter.add(1)
+        return json.loads(cached)
+
+    cache_miss_counter.add(1)
+    rows = get_all_orders(limit=limit, offset=offset)
+    result = [
+        {
+            "id": r[0],
+            "customer_id": r[1],
+            "product_id": r[2],
+            "quantity": r[3],
+            "amount": float(r[4]),
+            "status": r[5],
+        }
+        for r in rows
+    ]
+    cache_set(cache_key, json.dumps(result), ttl=60)
+    return result
 
 
 def _invalidate_list_cache():
