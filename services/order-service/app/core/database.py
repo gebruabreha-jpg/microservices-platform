@@ -68,7 +68,8 @@ def get_redis():
 
 def publish_kafka_event(topic, event):
     if kafka_breaker:
-        publish_kafka_event_impl(topic, event)
+        with kafka_breaker:
+            publish_kafka_event_impl(topic, event)
     else:
         publish_kafka_event_impl(topic, event)
 
@@ -102,15 +103,16 @@ def cache_delete(key):
 
 def check_dependencies():
     checks = {}
+    conn = None
     try:
         conn = get_db()
         conn.cursor().execute("SELECT 1")
-        conn.close()
-        if db_pool:
-            release_db(conn)
         checks["postgres"] = True
     except Exception:
         checks["postgres"] = False
+    finally:
+        if conn:
+            release_db(conn)
 
     try:
         r = get_redis()
