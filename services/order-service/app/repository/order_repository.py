@@ -1,7 +1,7 @@
 from app.core.database import get_db, release_db
 
 
-def create_order(order_data, conn=None):
+async def create_order(order_data, conn=None):
     own_conn = conn is None
     if own_conn:
         conn = get_db()
@@ -20,7 +20,7 @@ def create_order(order_data, conn=None):
             release_db(conn)
 
 
-def get_all_orders(limit=20, offset=0):
+async def get_all_orders(limit=20, offset=0):
     conn = get_db()
     try:
         cur = conn.cursor()
