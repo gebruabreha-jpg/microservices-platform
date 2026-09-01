@@ -1,135 +1,145 @@
 """
-Order Service - Business Logic
+Order Service - Business Logic (OOP + DI)
+
+Follows:
+- Single Responsibility Principle: Each method does one thing
+- Dependency Inversion: Depends on interfaces, not implementations
+- Open/Closed: Can extend without modifying
 """
+
 import json
-import uuid
 import time
+import uuid
+from typing import Optional, List, Dict
 from opentelemetry.trace import Status, StatusCode
-from app.repository.order_repository import create_order as create_order_repo, get_all_orders
-from app.core.database import get_db, get_redis, publish_kafka_event, release_db, check_dependencies, cache_set, cache_get, cache_delete, db_pool
-from app.schema.order_schema import OrderCreate
+
+from shared.interfaces import (
+    OrderRepository,
+    CacheClient,
+    EventPublisher,
+    MetricsClient,
+    Logger,
+    HealthChecker,
+)
 from shared.tracing import get_tracer
-from shared.metrics import get_metric
-from shared.logging import get_logger, log_event
-
-tracer = get_tracer("order-service")
-
-logger = get_logger("order-service")
-
-metric = get_metric()
-order_counter = metric.create_counter(
-    "order_requests_total",
-    description="Total order requests",
-    unit="1",
-)
-order_duration = metric.create_histogram(
-    "order_request_duration_seconds",
-    description="Order request duration in seconds",
-    unit="s",
-)
-cache_hit_counter = metric.create_counter(
-    "order_cache_hits_total",
-    description="Cache hits",
-    unit="1",
-)
-cache_miss_counter = metric.create_counter(
-    "order_cache_misses_total",
-    description="Cache misses",
-    unit="1",
-)
 
 
-async def health_check():
-    deps = await check_dependencies()
-    status = "ok" if all(deps.values()) else "degraded"
-    return {"status": status, "service": "order-service", "dependencies": deps}
+class OrderService:
+    """
+    Order service with dependency injection.
 
+    All dependencies are injected through the constructor,
+    following the Dependency Inversion Principle.
+    """
 
-async def create_order(order: OrderCreate, request_id=None):
-    start = time.time()
-    correlation_id = request_id or str(uuid.uuid4())
+    def __init__(
+        self,
+        order_repository: OrderRepository,
+        cache: CacheClient,
+        event_publisher: EventPublisher,
+        metrics: MetricsClient,
+        logger: Logger,
+        health_checker: HealthChecker,
+    ):
+        self._order_repository = order_repository
+        self._cache = cache
+        self._event_publisher = event_publisher
+        self._metrics = metrics
+        self._logger = logger
+        self._health_checker = health_checker
+        self._tracer = get_tracer("order-service")
 
-    with tracer.start_as_current_span("create_order") as span:
-        span.set_attribute("order.customer_id", order.customer_id)
-        span.set_attribute("order.product_id", order.product_id)
-        span.set_attribute("order.quantity", order.quantity)
-        span.set_attribute("order.amount", order.amount)
-        span.set_attribute("correlation_id", correlation_id)
+        # Initialize metrics
+        self._order_counter = metrics.create_counter(
+            "order_requests_total",
+            description="Total order requests",
+            unit="1",
+        )
+        self._order_duration = metrics.create_histogram(
+            "order_request_duration_seconds",
+            description="Order request duration in seconds",
+            unit="s",
+        )
+        self._cache_hit_counter = metrics.create_counter(
+            "order_cache_hits_total",
+            description="Cache hits",
+            unit="1",
+        )
+        self._cache_miss_counter = metrics.create_counter(
+            "order_cache_misses_total",
+            description="Cache misses",
+            unit="1",
+        )
 
-        conn = None
-        try:
-            with tracer.start_as_current_span("db.insert_order") as db_span:
-                conn = get_db()
-                order_id = create_order_repo(order, conn)
-                db_span.set_attribute("db.rows_affected", 1)
-                db_span.set_attribute("order.id", order_id)
+    async def health_check(self) -> Dict:
+        """Check service health."""
+        deps = await self._health_checker.check()
+        status = "ok" if all(deps.values()) else "degraded"
+        return {"status": status, "service": "order-service", "dependencies": deps}
 
-            with tracer.start_as_current_span("kafka.publish_order_created") as kafka_span:
-                event = {
-                    "order_id": order_id,
-                    "customer_id": order.customer_id,
-                    "product_id": order.product_id,
-                    "quantity": order.quantity,
-                    "amount": order.amount,
-                    "status": order.status,
-                    "correlation_id": correlation_id,
-                }
-                publish_kafka_event("orders", event)
-                kafka_span.set_attribute("messaging.system", "kafka")
-                kafka_span.set_attribute("messaging.destination", "orders")
-                kafka_span.set_attribute("order.id", order_id)
+    async def create_order(self, order_data, request_id: Optional[str] = None) -> Dict:
+        """Create a new order."""
+        start = time.time()
+        correlation_id = request_id or str(uuid.uuid4())
 
-            with tracer.start_as_current_span("redis.cache_order") as cache_span:
-                cache_set("order:" + str(order_id), json.dumps(event), ttl=3600)
-                _invalidate_list_cache()
-                cache_span.set_attribute("cache.operation", "set")
-                cache_span.set_attribute("order.id", order_id)
+        with self._tracer.start_as_current_span("create_order") as span:
+            span.set_attribute("order.customer_id", order_data.customer_id)
+            span.set_attribute("order.product_id", order_data.product_id)
+            span.set_attribute("correlation_id", correlation_id)
 
-            order_counter.add(1, {"method": "POST", "endpoint": "/orders", "status": "success"})
-            log_event(logger, "info", "Order created", order_id=order_id, correlation_id=correlation_id)
-            span.set_status(Status(StatusCode.OK))
-            return {"id": order_id, "status": order.status, "correlation_id": correlation_id}
+            try:
+                # Database operation
+                with self._tracer.start_as_current_span("db.insert_order") as db_span:
+                    order_id = await self._order_repository.create(order_data)
+                    db_span.set_attribute("order.id", order_id)
 
-        except Exception as e:
-            order_counter.add(1, {"method": "POST", "endpoint": "/orders", "status": "error"})
-            log_event(logger, "error", "Order creation failed", error=str(e), correlation_id=correlation_id)
-            span.set_status(Status(StatusCode.ERROR, str(e)))
-            span.record_exception(e)
-            raise
-        finally:
-            duration = time.time() - start
-            order_duration.record(duration, {"endpoint": "/orders"})
-            if conn:
-                release_db(conn)
+                # Publish event
+                with self._tracer.start_as_current_span("kafka.publish_order_created") as kafka_span:
+                    event = {
+                        "order_id": order_id,
+                        "customer_id": order_data.customer_id,
+                        "product_id": order_data.product_id,
+                        "quantity": order_data.quantity,
+                        "amount": order_data.amount,
+                        "status": order_data.status,
+                        "correlation_id": correlation_id,
+                    }
+                    await self._event_publisher.publish("orders", event)
+                    kafka_span.set_attribute("messaging.destination", "orders")
 
+                # Cache operation
+                with self._tracer.start_as_current_span("redis.cache_order") as cache_span:
+                    self._cache.set(f"order:{order_id}", json.dumps(event), ttl=3600)
+                    self._cache.delete_pattern("orders:list:*")
+                    cache_span.set_attribute("cache.operation", "set")
 
-async def list_orders(limit=20, offset=0):
-    cache_key = f"orders:list:{limit}:{offset}"
-    cached = cache_get(cache_key)
-    if cached:
-        cache_hit_counter.add(1)
-        return json.loads(cached)
+                # Record metrics
+                self._order_counter.add(1, {"method": "POST", "endpoint": "/orders", "status": "success"})
+                self._logger.info("Order created", order_id=order_id, correlation_id=correlation_id)
+                span.set_status(Status(StatusCode.OK))
 
-    cache_miss_counter.add(1)
-    rows = get_all_orders(limit=limit, offset=offset)
-    result = [
-        {
-            "id": r[0],
-            "customer_id": r[1],
-            "product_id": r[2],
-            "quantity": r[3],
-            "amount": float(r[4]),
-            "status": r[5],
-        }
-        for r in rows
-    ]
-    cache_set(cache_key, json.dumps(result), ttl=60)
-    return result
+                return {"id": order_id, "status": order_data.status, "correlation_id": correlation_id}
 
+            except Exception as e:
+                self._order_counter.add(1, {"method": "POST", "endpoint": "/orders", "status": "error"})
+                self._logger.error("Order creation failed", error=str(e), correlation_id=correlation_id)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
+                raise
+            finally:
+                duration = time.time() - start
+                self._order_duration.record(duration, {"endpoint": "/orders"})
 
-async def _invalidate_list_cache():
-    """Invalidate all list cache entries using SCAN + DELETE."""
-    r = get_redis()
-    if r:
-        for key in r.scan_iter(match="orders:list:*", count=100):
-            r.delete(key)
+    async def list_orders(self, limit: int = 20, offset: int = 0) -> List[Dict]:
+        """List orders with pagination."""
+        cache_key = f"orders:list:{limit}:{offset}"
+        cached = self._cache.get(cache_key)
+
+        if cached:
+            self._cache_hit_counter.add(1)
+            return json.loads(cached)
+
+        self._cache_miss_counter.add(1)
+        rows = await self._order_repository.get_all(limit=limit, offset=offset)
+        self._cache.set(cache_key, json.dumps(rows), ttl=60)
+        return rows

@@ -1,17 +1,14 @@
 """
 Order Service - Main Application Entry Point
-Responsibilities:
-- Create FastAPI app
-- Register middleware (correlation ID, rate limiting)
-- Set up observability (tracing, metrics, logging)
-- Include routes
+
+Uses Dependency Injection Container to wire dependencies.
 """
 
 import os
 from fastapi import FastAPI
 from app.routes.order_router import router
+from app.container import Container
 from shared.tracing import setup_tracing, flush_telemetry
-from shared.metrics import get_metric
 from shared.logging import get_logger, log_event
 from middleware import CorrelationIdMiddleware
 
@@ -20,12 +17,11 @@ os.environ.setdefault("SERVICE_NAME", "order-service")
 os.environ.setdefault("SERVICE_VERSION", "1.0.0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
-#If tracing/metrics setup fails, we need logging to debug it 
-#so that is whywe put first the logger setup
-# ═══════════════════════════════════════════════════════════════
-# 1. LOGGER FIRST — so you can log any setup errors below
-# ═══════════════════════════════════════════════════════════════
+# 1. Logger first
 logger = get_logger("order-service")
+
+# Create DI container
+container = Container()
 
 # Create app
 app = FastAPI(title="order-service")
@@ -33,27 +29,8 @@ app = FastAPI(title="order-service")
 # Middleware
 app.add_middleware(CorrelationIdMiddleware)
 
-# Observability initialization
-# ═══════════════════════════════════════════════════════════════
-# 2. TRACING SECOND — instrument the app
-# ═══════════════════════════════════════════════════════════════
+# Observability
 setup_tracing(app, os.getenv("SERVICE_NAME"))
-
-
-# ═══════════════════════════════════════════════════════════════
-# 3. METRICS THIRD — create metric instruments
-# ═══════════════════════════════════════════════════════════════
-metric = get_metric()
-request_counter = metric.create_counter(
-    "http_requests_total",
-    description="Total HTTP requests",
-    unit="1",
-)
-request_duration = metric.create_histogram(
-    "http_request_duration_seconds",
-    description="HTTP request duration in seconds",
-    unit="s",
-)
 
 # Routes
 app.include_router(router)

@@ -1,124 +1,89 @@
+"""
+Database connections and utilities.
+
+Only contains connection factories - no business logic.
+All repository implementations are in the DI container.
+"""
+
 import os
 import json
 import redis
 import psycopg2
 from psycopg2 import pool
 from kafka import KafkaProducer
-
-from resilience import default_retry
-from resilience.circuit_breaker import redis_breaker, kafka_breaker
-
-try:
-    db_pool = pool.ThreadedConnectionPool(
-        minconn=1,
-        maxconn=int(os.getenv("POSTGRES_POOL_SIZE", 10)),
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=int(os.getenv("POSTGRES_PORT", 5432)),
-        dbname=os.getenv("POSTGRES_DB", "appdb"),
-        user=os.getenv("POSTGRES_USER", "admin"),
-        password=os.getenv("POSTGRES_PASSWORD", "secret"),
-    )
-except Exception:
-    db_pool = None
-
-try:
-    redis_client = redis.Redis(
-        host=os.getenv("REDIS_HOST", "redis"),
-        port=int(os.getenv("REDIS_PORT", 6379)),
-        password=os.getenv("REDIS_PASSWORD", None),
-        decode_responses=True,
-    )
-    redis_client.ping()
-except Exception:
-    redis_client = None
-
-try:
-    kafka_producer = KafkaProducer(
-        bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
-        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        retries=3,
-        acks="all",
-    )
-except Exception:
-    kafka_producer = None
+import pika
 
 
-def get_db():
-    if db_pool:
-        return db_pool.getconn()
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=int(os.getenv("POSTGRES_PORT", 5432)),
-        dbname=os.getenv("POSTGRES_DB", "appdb"),
-        user=os.getenv("POSTGRES_USER", "admin"),
-        password=os.getenv("POSTGRES_PASSWORD", "secret"),
-    )
+# =============================================================================
+# CONNECTION FACTORIES
+# =============================================================================
 
-
-def release_db(conn):
-    if db_pool:
-        db_pool.putconn(conn)
-    else:
-        conn.close()
-
-
-def get_redis():
-    return redis_client
-
-
-def publish_kafka_event(topic, event):
-    if kafka_breaker:
-        with kafka_breaker:
-            publish_kafka_event_impl(topic, event)
-    else:
-        publish_kafka_event_impl(topic, event)
-
-
-@default_retry
-def publish_kafka_event_impl(topic, event):
-    if not kafka_producer:
-        raise RuntimeError("Kafka producer not available")
-    kafka_producer.send(topic, event)
-    kafka_producer.flush(timeout=5)
-
-
-def cache_set(key, value, ttl=3600):
-    r = get_redis()
-    if r:
-        r.set(key, value, ex=ttl)
-
-
-def cache_get(key):
-    r = get_redis()
-    if r:
-        return r.get(key)
-    return None
-
-
-def cache_delete(key):
-    r = get_redis()
-    if r:
-        r.delete(key)
-
-
-def check_dependencies():
-    checks = {}
-    conn = None
+def create_db_pool() -> pool.ThreadedConnectionPool:
+    """Create PostgreSQL connection pool."""
     try:
-        conn = get_db()
-        conn.cursor().execute("SELECT 1")
-        checks["postgres"] = True
+        return pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=int(os.getenv("POSTGRES_POOL_SIZE", 10)),
+            host=os.getenv("POSTGRES_HOST", "postgres"),
+            port=int(os.getenv("POSTGRES_PORT", 5432)),
+            dbname=os.getenv("POSTGRES_DB", "appdb"),
+            user=os.getenv("POSTGRES_USER", "admin"),
+            password=os.getenv("POSTGRES_PASSWORD", "secret"),
+        )
     except Exception:
-        checks["postgres"] = False
-    finally:
-        if conn:
-            release_db(conn)
+        return None
 
+
+def create_redis_client() -> redis.Redis:
+    """Create Redis client."""
     try:
-        r = get_redis()
-        r.ping()
-        checks["redis"] = True
+        client = redis.Redis(
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", 6379)),
+            password=os.getenv("REDIS_PASSWORD", None),
+            decode_responses=True,
+        )
+        client.ping()
+        return client
     except Exception:
-        checks["redis"] = False
+        return None
 
-    return checks
+
+def create_kafka_producer() -> KafkaProducer:
+    """Create Kafka producer."""
+    try:
+        return KafkaProducer(
+            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
+            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+            retries=3,
+            acks="all",
+        )
+    except Exception:
+        return None
+
+
+def get_rabbitmq_connection_factory():
+    """Create RabbitMQ connection factory."""
+    def factory():
+        return pika.BlockingConnection(
+            pika.ConnectionParameters(
+                host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
+                port=5672,
+                credentials=pika.PlainCredentials(
+                    os.getenv("RABBITMQ_USER", "admin"),
+                    os.getenv("RABBITMQ_PASS", "secret"),
+                ),
+            )
+        )
+    return factory
+
+
+# =============================================================================
+# RABBITMQ UTILITIES
+# =============================================================================
+
+def setup_dlq(channel):
+    """Setup Dead Letter Exchange and Queue."""
+    channel.exchange_declare(exchange="dlx", exchange_type="direct", durable=True)
+    channel.queue_declare(queue="dlq", durable=True)
+    channel.queue_bind(exchange="dlx", queue="dlq", routing_key="dlq")
