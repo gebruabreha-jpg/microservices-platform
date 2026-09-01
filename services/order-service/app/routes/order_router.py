@@ -8,8 +8,8 @@ METRICS ENDPOINT:
 import uuid
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
-from app.service.order_service import health_check, list_orders, create_order
-from app.schema.order_schema import OrderCreate, orderResponse
+from app.service.order_service import list_orders, create_order
+from app.schema.order_schema import OrderCreate, OrderResponse
 
 router = APIRouter()
 
