@@ -1,29 +1,29 @@
 """
-Dependency Injection Container for Notification Service
+Dependency Injection Container for Notification Service.
 
 Wires together all dependencies following the Dependency Inversion Principle.
+Only contains wiring logic - implementations are in their own modules.
 """
 
 import os
-import redis
+import json
 import psycopg2
 from psycopg2 import pool
 import pika
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 
 from shared.interfaces import (
-    NotificationRepository,
     EventPublisher,
-    MetricsClient,
     Logger,
     HealthChecker,
 )
 from shared.metrics import get_metric
 from shared.logging import get_logger, log_event
+from app.repository.notification_repository import PostgresNotificationRepository
 
 
 # =============================================================================
-# DATABASE CONNECTIONS
+# CONNECTION FACTORIES
 # =============================================================================
 
 def create_db_pool() -> pool.ThreadedConnectionPool:
@@ -78,50 +78,6 @@ def create_circuit_breakers():
 # =============================================================================
 # IMPLEMENTATIONS
 # =============================================================================
-
-class PostgresNotificationRepository(NotificationRepository):
-    """PostgreSQL implementation of NotificationRepository."""
-
-    def __init__(self, db_pool: pool.ThreadedConnectionPool):
-        self._db_pool = db_pool
-
-    async def create(self, notification_data: Any) -> int:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO notifications (type, order_id, status) VALUES (%s, %s, %s) RETURNING id",
-                (notification_data.type, notification_data.order_id, notification_data.status),
-            )
-            notification_id = cur.fetchone()[0]
-            conn.commit()
-            return notification_id
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
-
-    async def get_all(self, limit: int = 20, offset: int = 0) -> List[Dict]:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT id, type, order_id, status FROM notifications ORDER BY id LIMIT %s OFFSET %s",
-                (limit, offset),
-            )
-            rows = cur.fetchall()
-            return [
-                {
-                    "id": r[0],
-                    "type": r[1],
-                    "order_id": r[2],
-                    "status": r[3],
-                }
-                for r in rows
-            ]
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
-
 
 class RabbitMQEventPublisher(EventPublisher):
     """RabbitMQ implementation of EventPublisher."""
@@ -188,7 +144,7 @@ class RabbitMQHealthChecker(HealthChecker):
 # =============================================================================
 
 class Container:
-    """Dependency Injection Container."""
+    """Dependency Injection Container - only wires dependencies."""
 
     def __init__(self):
         # Infrastructure

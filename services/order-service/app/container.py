@@ -1,31 +1,31 @@
 """
-Dependency Injection Container
+Dependency Injection Container for Order Service.
 
 Wires together all dependencies following the Dependency Inversion Principle.
+Only contains wiring logic - implementations are in their own modules.
 """
 
 import os
+import json
 import redis
 import psycopg2
 from psycopg2 import pool
 from kafka import KafkaProducer
-import pika
+from typing import Optional, List, Dict
 
 from shared.interfaces import (
-    OrderRepository,
-    NotificationRepository,
     CacheClient,
     EventPublisher,
-    MetricsClient,
     Logger,
     HealthChecker,
 )
 from shared.metrics import get_metric
 from shared.logging import get_logger, log_event
+from app.repository.order_repository import PostgresOrderRepository
 
 
 # =============================================================================
-# DATABASE CONNECTIONS
+# CONNECTION FACTORIES
 # =============================================================================
 
 def create_db_pool() -> pool.ThreadedConnectionPool:
@@ -72,22 +72,6 @@ def create_kafka_producer() -> KafkaProducer:
         return None
 
 
-def get_rabbitmq_connection_factory():
-    """Create RabbitMQ connection factory."""
-    def factory():
-        return pika.BlockingConnection(
-            pika.ConnectionParameters(
-                host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
-                port=5672,
-                credentials=pika.PlainCredentials(
-                    os.getenv("RABBITMQ_USER", "admin"),
-                    os.getenv("RABBITMQ_PASS", "secret"),
-                ),
-            )
-        )
-    return factory
-
-
 # =============================================================================
 # CIRCUIT BREAKERS
 # =============================================================================
@@ -95,16 +79,14 @@ def get_rabbitmq_connection_factory():
 def create_circuit_breakers():
     """Create circuit breakers for external services."""
     try:
-        from resilience import kafka_breaker, rabbitmq_breaker, redis_breaker
+        from resilience import kafka_breaker, redis_breaker
         return {
             "kafka": kafka_breaker,
-            "rabbitmq": rabbitmq_breaker,
             "redis": redis_breaker,
         }
     except ImportError:
         return {
             "kafka": None,
-            "rabbitmq": None,
             "redis": None,
         }
 
@@ -112,96 +94,6 @@ def create_circuit_breakers():
 # =============================================================================
 # IMPLEMENTATIONS
 # =============================================================================
-
-class PostgresOrderRepository(OrderRepository):
-    """PostgreSQL implementation of OrderRepository."""
-
-    def __init__(self, db_pool: pool.ThreadedConnectionPool):
-        self._db_pool = db_pool
-
-    async def create(self, order_data: Any) -> int:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO orders (customer_id, product_id, quantity, amount, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-                (order_data.customer_id, order_data.product_id, order_data.quantity, order_data.amount, order_data.status),
-            )
-            order_id = cur.fetchone()[0]
-            conn.commit()
-            return order_id
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
-
-    async def get_all(self, limit: int = 20, offset: int = 0) -> List[Dict]:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT id, customer_id, product_id, quantity, amount, status FROM orders ORDER BY id LIMIT %s OFFSET %s",
-                (limit, offset),
-            )
-            rows = cur.fetchall()
-            return [
-                {
-                    "id": r[0],
-                    "customer_id": r[1],
-                    "product_id": r[2],
-                    "quantity": r[3],
-                    "amount": float(r[4]),
-                    "status": r[5],
-                }
-                for r in rows
-            ]
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
-
-
-class PostgresNotificationRepository(NotificationRepository):
-    """PostgreSQL implementation of NotificationRepository."""
-
-    def __init__(self, db_pool: pool.ThreadedConnectionPool):
-        self._db_pool = db_pool
-
-    async def create(self, notification_data: Any) -> int:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO notifications (type, order_id, status) VALUES (%s, %s, %s) RETURNING id",
-                (notification_data.type, notification_data.order_id, notification_data.status),
-            )
-            notification_id = cur.fetchone()[0]
-            conn.commit()
-            return notification_id
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
-
-    async def get_all(self, limit: int = 20, offset: int = 0) -> List[Dict]:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT id, type, order_id, status FROM notifications ORDER BY id LIMIT %s OFFSET %s",
-                (limit, offset),
-            )
-            rows = cur.fetchall()
-            return [
-                {
-                    "id": r[0],
-                    "type": r[1],
-                    "order_id": r[2],
-                    "status": r[3],
-                }
-                for r in rows
-            ]
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
-
 
 class RedisCacheClient(CacheClient):
     """Redis implementation of CacheClient."""
@@ -240,39 +132,11 @@ class KafkaEventPublisher(EventPublisher):
             self._producer.flush(timeout=5)
 
 
-class RabbitMQEventPublisher(EventPublisher):
-    """RabbitMQ implementation of EventPublisher."""
-
-    def __init__(self, connection_factory, circuit_breaker=None):
-        self._connection_factory = connection_factory
-        self._circuit_breaker = circuit_breaker
-
-    async def publish(self, queue: str, event: dict) -> None:
-        def _publish():
-            connection = self._connection_factory()
-            channel = connection.channel()
-            channel.queue_declare(queue=queue, durable=True)
-            channel.basic_publish(
-                exchange="",
-                routing_key=queue,
-                body=json.dumps(event),
-                properties=pika.BasicProperties(delivery_mode=2),
-            )
-            connection.close()
-
-        if self._circuit_breaker:
-            with self._circuit_breaker:
-                _publish()
-        else:
-            _publish()
-
-
 class StructuredLogger(Logger):
     """Structured JSON logger implementation."""
 
     def __init__(self, service_name: str):
         self._logger = get_logger(service_name)
-        self._service_name = service_name
 
     def info(self, message: str, **kwargs) -> None:
         log_event(self._logger, "info", message, **kwargs)
@@ -313,36 +177,18 @@ class DatabaseHealthChecker(HealthChecker):
         return checks
 
 
-class RabbitMQHealthChecker(HealthChecker):
-    """Health checker for RabbitMQ dependency."""
-
-    def __init__(self, connection_factory):
-        self._connection_factory = connection_factory
-
-    async def check(self) -> Dict[str, bool]:
-        checks = {}
-        try:
-            connection = self._connection_factory()
-            connection.close()
-            checks["rabbitmq"] = True
-        except Exception:
-            checks["rabbitmq"] = False
-        return checks
-
-
 # =============================================================================
 # DI CONTAINER
 # =============================================================================
 
 class Container:
-    """Dependency Injection Container."""
+    """Dependency Injection Container - only wires dependencies."""
 
     def __init__(self):
         # Infrastructure
         self.db_pool = create_db_pool()
         self.redis_client = create_redis_client()
         self.kafka_producer = create_kafka_producer()
-        self.rabbitmq_connection_factory = get_rabbitmq_connection_factory()
         self.circuit_breakers = create_circuit_breakers()
 
     def get_order_service(self):
@@ -359,19 +205,4 @@ class Container:
             metrics=get_metric(),
             logger=StructuredLogger("order-service"),
             health_checker=DatabaseHealthChecker(self.db_pool, self.redis_client),
-        )
-
-    def get_notification_service(self):
-        """Create NotificationService with all dependencies injected."""
-        from app.service.notification_service import NotificationService
-
-        return NotificationService(
-            notification_repository=PostgresNotificationRepository(self.db_pool),
-            event_publisher=RabbitMQEventPublisher(
-                self.rabbitmq_connection_factory,
-                self.circuit_breakers.get("rabbitmq"),
-            ),
-            metrics=get_metric(),
-            logger=StructuredLogger("notification-service"),
-            health_checker=RabbitMQHealthChecker(self.rabbitmq_connection_factory),
         )
