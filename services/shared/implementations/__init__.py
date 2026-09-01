@@ -1,19 +1,20 @@
 """
-Concrete implementations of interfaces.
+Shared implementations for all services.
+
+Contains concrete implementations of interfaces that can be reused
+across multiple services, following DRY principle.
 """
 
-import json
 import os
+import json
 import redis
 import psycopg2
 from psycopg2 import pool
 from kafka import KafkaProducer
 import pika
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict
 
 from shared.interfaces import (
-    OrderRepository,
-    NotificationRepository,
     CacheClient,
     EventPublisher,
     Logger,
@@ -24,97 +25,88 @@ from shared.logging import get_logger, log_event
 
 
 # =============================================================================
-# REPOSITORY IMPLEMENTATIONS
+# CONNECTION FACTORIES
 # =============================================================================
 
-class PostgresOrderRepository(OrderRepository):
-    """PostgreSQL implementation of OrderRepository."""
+def create_db_pool() -> pool.ThreadedConnectionPool:
+    """Create PostgreSQL connection pool."""
+    try:
+        return pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=int(os.getenv("POSTGRES_POOL_SIZE", 10)),
+            host=os.getenv("POSTGRES_HOST", "postgres"),
+            port=int(os.getenv("POSTGRES_PORT", 5432)),
+            dbname=os.getenv("POSTGRES_DB", "appdb"),
+            user=os.getenv("POSTGRES_USER", "admin"),
+            password=os.getenv("POSTGRES_PASSWORD", "secret"),
+        )
+    except Exception:
+        return None
 
-    def __init__(self, db_pool: pool.ThreadedConnectionPool):
-        self._db_pool = db_pool
 
-    async def create(self, order_data: Any) -> int:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO orders (customer_id, product_id, quantity, amount, status) VALUES (%s, %s, %s, %s, %s) RETURNING id",
-                (order_data.customer_id, order_data.product_id, order_data.quantity, order_data.amount, order_data.status),
+def create_redis_client() -> redis.Redis:
+    """Create Redis client."""
+    try:
+        client = redis.Redis(
+            host=os.getenv("REDIS_HOST", "redis"),
+            port=int(os.getenv("REDIS_PORT", 6379)),
+            password=os.getenv("REDIS_PASSWORD", None),
+            decode_responses=True,
+        )
+        client.ping()
+        return client
+    except Exception:
+        return None
+
+
+def create_kafka_producer() -> KafkaProducer:
+    """Create Kafka producer."""
+    try:
+        return KafkaProducer(
+            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"),
+            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+            retries=3,
+            acks="all",
+        )
+    except Exception:
+        return None
+
+
+def get_rabbitmq_connection_factory():
+    """Create RabbitMQ connection factory."""
+    def factory():
+        return pika.BlockingConnection(
+            pika.ConnectionParameters(
+                host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
+                port=5672,
+                credentials=pika.PlainCredentials(
+                    os.getenv("RABBITMQ_USER", "admin"),
+                    os.getenv("RABBITMQ_PASS", "secret"),
+                ),
             )
-            order_id = cur.fetchone()[0]
-            conn.commit()
-            return order_id
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
-
-    async def get_all(self, limit: int = 20, offset: int = 0) -> List[Dict]:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT id, customer_id, product_id, quantity, amount, status FROM orders ORDER BY id LIMIT %s OFFSET %s",
-                (limit, offset),
-            )
-            rows = cur.fetchall()
-            return [
-                {
-                    "id": r[0],
-                    "customer_id": r[1],
-                    "product_id": r[2],
-                    "quantity": r[3],
-                    "amount": float(r[4]),
-                    "status": r[5],
-                }
-                for r in rows
-            ]
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
+        )
+    return factory
 
 
-class PostgresNotificationRepository(NotificationRepository):
-    """PostgreSQL implementation of NotificationRepository."""
+# =============================================================================
+# CIRCUIT BREAKERS
+# =============================================================================
 
-    def __init__(self, db_pool: pool.ThreadedConnectionPool):
-        self._db_pool = db_pool
-
-    async def create(self, notification_data: Any) -> int:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO notifications (type, order_id, status) VALUES (%s, %s, %s) RETURNING id",
-                (notification_data.type, notification_data.order_id, notification_data.status),
-            )
-            notification_id = cur.fetchone()[0]
-            conn.commit()
-            return notification_id
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
-
-    async def get_all(self, limit: int = 20, offset: int = 0) -> List[Dict]:
-        conn = self._db_pool.getconn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT id, type, order_id, status FROM notifications ORDER BY id LIMIT %s OFFSET %s",
-                (limit, offset),
-            )
-            rows = cur.fetchall()
-            return [
-                {
-                    "id": r[0],
-                    "type": r[1],
-                    "order_id": r[2],
-                    "status": r[3],
-                }
-                for r in rows
-            ]
-        finally:
-            cur.close()
-            self._db_pool.putconn(conn)
+def create_circuit_breakers():
+    """Create circuit breakers for all external services."""
+    try:
+        from resilience import kafka_breaker, rabbitmq_breaker, redis_breaker
+        return {
+            "kafka": kafka_breaker,
+            "rabbitmq": rabbitmq_breaker,
+            "redis": redis_breaker,
+        }
+    except ImportError:
+        return {
+            "kafka": None,
+            "rabbitmq": None,
+            "redis": None,
+        }
 
 
 # =============================================================================
@@ -198,7 +190,6 @@ class StructuredLogger(Logger):
 
     def __init__(self, service_name: str):
         self._logger = get_logger(service_name)
-        self._service_name = service_name
 
     def info(self, message: str, **kwargs) -> None:
         log_event(self._logger, "info", message, **kwargs)
@@ -211,7 +202,7 @@ class StructuredLogger(Logger):
 
 
 # =============================================================================
-# HEALTH CHECKER IMPLEMENTATION
+# HEALTH CHECKER IMPLEMENTATIONS
 # =============================================================================
 
 class DatabaseHealthChecker(HealthChecker):
