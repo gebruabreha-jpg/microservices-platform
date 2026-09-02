@@ -107,6 +107,18 @@ services:
     networks:
       - platform-net
 
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./kafka/topics.sh:/topics.sh:ro
+    entrypoint: ["bash", "/topics.sh"]
+    restart: "no"
+    networks:
+      - platform-net
+
   kafka-rest:
     image: confluentinc/cp-kafka-rest:7.5.0
     environment:
@@ -224,7 +236,6 @@ services:
     ports:
       - "4317:4317"
       - "4318:4318"
-      - "8889:8889"
     command:
       - '--config=/etc/otel-collector/config.yaml'
     volumes:

@@ -73,17 +73,6 @@ microservices-platform/
 │   ├── notification-service/    # Notification dispatch
 │   ├── traffic-generator/       # Locust load testing
 │   └── shared/                    # Shared utilities
-├── kubernetes/                  # Kubernetes manifests
-│   ├── helm/                    # Helm charts
-│   ├── ingress/                 # Ingress controllers
-│   ├── gateway-api/             # Gateway API configs
-│   ├── argocd/                  # GitOps deployment
-│   ├── cert-manager/            # TLS certificates
-│   ├── external-secrets/        # External secrets
-│   └── service-mesh/            # Istio/Linkerd configs
-└── infrastructure/
-    └── terraform/               # Infrastructure as Code
-```
 
 ## Prerequisites
 
@@ -346,9 +335,6 @@ Verify API Correctness
 Docker Compose
       │
       ▼
-Kubernetes
-      │
-      ▼
 Locust
       │
 Generate Realistic Traffic
@@ -417,7 +403,6 @@ Build incrementally — don't install everything on day one:
 10. OpenTelemetry
 11. Loki
 12. Tempo (or Jaeger)
-13. Kubernetes
 14. Helm
 15. Argo CD
 16. Terraform (or OpenTofu)

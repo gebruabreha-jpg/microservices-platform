@@ -1,14 +1,10 @@
-import random
-import time
-import csv
 import os
-from locust import task, between
-from locust import FastHttpUser
+import random
 
-# Best practice: configure host via CLI flag (--host) instead of hardcoding, 
-# but keeping this as a fallback.
-API_BASE = "http://nginx"
+from locust import FastHttpUser, between, task
 
+# Target the nginx gateway. Override with --host or LOCUST_HOST.
+API_BASE = os.getenv("LOCUST_HOST", "http://nginx")
 
 
 class OrderUser(FastHttpUser):
@@ -17,7 +13,7 @@ class OrderUser(FastHttpUser):
 
     def on_start(self):
         self.customer_id = random.randint(1, 100)
-        self.created_order_ids = [] # Used to make realistic downstream requests
+        self.created_order_ids = []
 
     @task(3)
     def create_order(self):
@@ -27,15 +23,12 @@ class OrderUser(FastHttpUser):
             "quantity": random.randint(1, 10),
             "amount": round(random.uniform(5.0, 200.0), 2),
         }
-         # self.client.rest automatically catches non-2xx status codes as failures instade of:- with self.client.post("/orders", json=payload, name="/orders") as response:
         with self.client.rest("POST", "/orders", json=payload, name="/orders") as response:
-            if response.status_code == 200 and "id" in response.js:
+            if response.status_code == 200 and response.js and "id" in response.js:
                 self.created_order_ids.append(response.js["id"])
 
-
     @task(2)
-    def list_orders(self):
-        # Realistic testing: 50% chance to view a specific order they made
+    def list_or_get_orders(self):
         if self.created_order_ids and random.choice([True, False]):
             order_id = random.choice(self.created_order_ids)
             self.client.get(f"/orders/{order_id}", name="/orders/[id]")
@@ -44,11 +37,11 @@ class OrderUser(FastHttpUser):
 
     @task(1)
     def get_metrics(self):
-        self.client.get("/metrics", name="/metrics")
+        self.client.get("/metrics/order", name="/metrics/[service]")
 
     @task(1)
     def health_check(self):
-        self.client.get("/health/order", name="/health/order")
+        self.client.get("/health/order", name="/health/[service]")
 
 
 class PaymentUser(FastHttpUser):
@@ -65,12 +58,11 @@ class PaymentUser(FastHttpUser):
             "order_id": random.randint(1, 1000),
             "amount": round(random.uniform(5.0, 500.0), 2),
         }
-        # Simplified using rest()
         self.client.rest("POST", "/payments", json=payload, name="/payments")
 
     @task(1)
     def health_check(self):
-        self.client.get("/health/payment", name="/health/payment")
+        self.client.get("/health/payment", name="/health/[service]")
 
 
 class NotificationUser(FastHttpUser):
@@ -87,7 +79,7 @@ class NotificationUser(FastHttpUser):
 
     @task(1)
     def health_check(self):
-        self.client.get("/health/notification", name="/health/notification")
+        self.client.get("/health/notification", name="/health/[service]")
 
 
 class MixedUser(FastHttpUser):
@@ -130,8 +122,8 @@ class MixedUser(FastHttpUser):
 
     @task(1)
     def health_check(self):
-        self.client.get("/health", name="/health")
+        self.client.get("/health/order", name="/health/[service]")
 
-    @task
+    @task(1)
     def get_metrics(self):
-        self.client.get("/metrics", name="/metrics")
+        self.client.get("/metrics/order", name="/metrics/[service]")

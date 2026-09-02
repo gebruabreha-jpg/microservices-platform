@@ -76,3 +76,29 @@ class PostgresOrderRepository(OrderRepository):
         finally:
             cur.close()
             self._db_pool.putconn(conn)
+
+    async def get_by_id(self, order_id: int) -> Optional[Dict]:
+        """Get a single order by id, or None."""
+        conn = self._db_pool.getconn()
+        cur = None
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, customer_id, product_id, quantity, amount, status FROM orders WHERE id = %s",
+                (order_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return {
+                "id": row[0],
+                "customer_id": row[1],
+                "product_id": row[2],
+                "quantity": row[3],
+                "amount": float(row[4]),
+                "status": row[5],
+            }
+        finally:
+            if cur is not None:
+                cur.close()
+            self._db_pool.putconn(conn)

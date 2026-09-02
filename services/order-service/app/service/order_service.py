@@ -108,11 +108,18 @@ class OrderService:
                     )
                     db_span.set_attribute("order.id", order_id)
 
-                _, event = build_event(order_id)
+                order_view = {
+                    "id": order_id,
+                    "customer_id": order_data.customer_id,
+                    "product_id": order_data.product_id,
+                    "quantity": order_data.quantity,
+                    "amount": order_data.amount,
+                    "status": order_data.status,
+                }
 
                 # Cache operation
                 with self._tracer.start_as_current_span("redis.cache_order") as cache_span:
-                    self._cache.set(f"order:{order_id}", json.dumps(event), ttl=3600)
+                    self._cache.set(f"order:{order_id}", json.dumps(order_view), ttl=3600)
                     self._cache.delete_pattern("orders:list:*")
                     cache_span.set_attribute("cache.operation", "set")
 
@@ -121,15 +128,7 @@ class OrderService:
                 self._logger.info("Order created", order_id=order_id, correlation_id=correlation_id)
                 span.set_status(Status(StatusCode.OK))
 
-                return {
-                    "id": order_id,
-                    "customer_id": order_data.customer_id,
-                    "product_id": order_data.product_id,
-                    "quantity": order_data.quantity,
-                    "amount": order_data.amount,
-                    "status": order_data.status,
-                    "correlation_id": correlation_id,
-                }
+                return {**order_view, "correlation_id": correlation_id}
 
             except Exception as e:
                 self._order_counter.add(1, {"method": "POST", "endpoint": "/orders", "status": "error"})
@@ -140,6 +139,19 @@ class OrderService:
             finally:
                 duration = time.time() - start
                 self._order_duration.record(duration, {"endpoint": "/orders"})
+
+    async def get_order(self, order_id: int) -> Optional[Dict]:
+        """Return one order (cache-first), or None if it does not exist."""
+        cached = self._cache.get(f"order:{order_id}")
+        if cached:
+            self._cache_hit_counter.add(1)
+            return json.loads(cached)
+
+        self._cache_miss_counter.add(1)
+        order = await self._order_repository.get_by_id(order_id)
+        if order is not None:
+            self._cache.set(f"order:{order_id}", json.dumps(order), ttl=3600)
+        return order
 
     async def list_orders(self, limit: int = 20, offset: int = 0) -> List[Dict]:
         """List orders with pagination."""

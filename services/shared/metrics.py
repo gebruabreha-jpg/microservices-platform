@@ -3,36 +3,19 @@ Shared metrics module.
 
 ONE CONFIG FOR BOTH DOCKER COMPOSE AND KUBERNETES:
 
-Every service records metrics through an OpenTelemetry meter. Those metrics are
-exported two ways from the same MeterProvider:
-
-  - OTLP gRPC -> OTel Collector (for pipelines that aggregate centrally)
-  - Prometheus text format on GET /metrics (for direct scraping by Prometheus)
-
-The Prometheus reader registers instruments into the default ``prometheus_client``
-registry, so ``generate_latest()`` returns the real application counters and
-histograms, not just process stats.
+Every service records metrics through an OpenTelemetry meter whose reader
+exposes them in Prometheus text format. `setup_metrics_endpoint(app)` serves
+them at GET /metrics, and Prometheus scrapes each service directly (see
+platform/prometheus/prometheus.yml). No collector hop for metrics.
 """
 
-import os
-
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
-from shared.tracing import _resource
+_readers = []
 
-# Push metrics to the OTel Collector every 15s.
-_readers = [
-    PeriodicExportingMetricReader(
-        OTLPMetricExporter(
-            endpoint=os.getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "http://otel-collector:4317")
-        ),
-        export_interval_millis=15000,
-    )
-]
-
-# Expose the same metrics in Prometheus text format for GET /metrics scraping.
+# Expose metrics in Prometheus text format via the default prometheus_client
+# registry, so generate_latest() returns the real application counters and
+# histograms (plus process stats), not an empty registry.
 try:
     from opentelemetry.exporter.prometheus import PrometheusMetricReader
 
@@ -40,6 +23,8 @@ try:
     _PROMETHEUS_AVAILABLE = True
 except ImportError:  # pragma: no cover - exporter not installed
     _PROMETHEUS_AVAILABLE = False
+
+from shared.tracing import _resource
 
 _meter_provider = MeterProvider(resource=_resource, metric_readers=_readers)
 

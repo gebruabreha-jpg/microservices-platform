@@ -63,3 +63,29 @@ class TestListOrders:
         response = client.get("/orders")
         assert response.status_code == 200
         assert response.json() == []
+
+
+class TestGetOrder:
+    def test_get_order_found(self, client, monkeypatch):
+        async def fake_get(order_id):
+            return {
+                "id": order_id,
+                "customer_id": 1,
+                "product_id": 1,
+                "quantity": 2,
+                "amount": 59.98,
+                "status": "created",
+            }
+
+        monkeypatch.setattr(order_router.order_service, "get_order", fake_get)
+        response = client.get("/orders/7")
+        assert response.status_code == 200
+        assert response.json()["id"] == 7
+
+    def test_get_order_missing(self, client, monkeypatch):
+        async def fake_get(order_id):
+            return None
+
+        monkeypatch.setattr(order_router.order_service, "get_order", fake_get)
+        response = client.get("/orders/999")
+        assert response.status_code == 404

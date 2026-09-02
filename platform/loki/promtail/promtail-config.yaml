@@ -18,5 +18,14 @@ scrape_configs:
         regex: /(.*)
         target_label: container
       - source_labels: [__meta_docker_container_log_stream]
-        regex: stdout
-        action: keep
+        target_label: stream
+    pipeline_stages:
+      # Services log one JSON object per line - lift level/service into labels
+      # so Loki queries work. (Non-JSON lines pass through unlabelled.)
+      - json:
+          expressions:
+            level: level
+            service: service
+      - labels:
+          level:
+          service:

@@ -4,7 +4,8 @@ Order Service - API Routes
 Uses DI container to get service instances.
 """
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
+
 from app.container import get_container
 from app.schema.order_schema import OrderCreate, OrderResponse
 
@@ -25,3 +26,12 @@ async def post_order(request: Request, order: OrderCreate):
 async def get_orders(request: Request, limit: int = 20, offset: int = 0):
     """List orders with pagination."""
     return await order_service.list_orders(limit=limit, offset=offset)
+
+
+@router.get("/orders/{order_id}", response_model=OrderResponse)
+async def get_order(request: Request, order_id: int):
+    """Fetch a single order by id."""
+    order = await order_service.get_order(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    return order

@@ -6,26 +6,6 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-  # =============================================================================
-  # PROMETHEUS: Direct scraping from service /metrics endpoints
-  # =============================================================================
-  # Why both OTLP and Prometheus receivers:
-  # - OTLP: Metrics from application code (counters, histograms) via MeterProvider
-  # - Prometheus: Metrics from /metrics endpoints (fallback/compatibility)
-  # Both paths export to the same Prometheus backend on port 8889.
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'order-service'
-          static_configs:
-            - targets: ['order-service:8080']
-        - job_name: 'payment-service'
-          static_configs:
-            - targets: ['payment-service:8080']
-        - job_name: 'notification-service'
-          static_configs:
-            - targets: ['notification-service:8080']
-
 processors:
   batch:
     timeout: 1s
@@ -33,22 +13,22 @@ processors:
 
 exporters:
   debug:
-    verbosity: detailed
-  otlphttp:
-    endpoint: http://tempo:4318/v1/traces
-  prometheus:
-    endpoint: 0.0.0.0:8889
+    verbosity: normal
+  # base URL only - the exporter appends /v1/traces itself
+  otlphttp/tempo:
+    endpoint: http://tempo:4318
 
 service:
+  telemetry:
+    logs:
+      level: info
   pipelines:
+    # Metrics do NOT go through the collector: each service exposes /metrics and
+    # Prometheus scrapes it directly.
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug, otlphttp]
-    metrics:
-      receivers: [otlp, prometheus]
-      processors: [batch]
-      exporters: [debug, prometheus]
+      exporters: [otlphttp/tempo]
     logs:
       receivers: [otlp]
       processors: [batch]

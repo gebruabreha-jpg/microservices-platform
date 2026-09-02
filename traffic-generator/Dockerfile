@@ -4,8 +4,12 @@ WORKDIR /traffic-generator
 
 COPY traffic-generator/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY traffic-generator/locustfile.py .
+COPY traffic-generator/locustfile.py traffic-generator/locust.conf ./
+
+RUN mkdir -p results
 
 EXPOSE 8089
 
-CMD ["locust", "-f", "locustfile.py", "--host", "http://nginx", "--web-port", "8089", "--web-host", "0.0.0.0"]
+# locust.conf supplies the defaults; compose overrides users/spawn-rate/run-time
+# via LOCUST_* env vars.
+CMD ["locust", "--web-host", "0.0.0.0"]

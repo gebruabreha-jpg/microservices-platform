@@ -39,6 +39,11 @@ class OrderRepository(Repository):
         """Get all orders with pagination."""
         ...
 
+    @abstractmethod
+    async def get_by_id(self, order_id: int) -> Optional[Dict]:
+        """Get a single order by id, or None."""
+        ...
+
 
 class NotificationRepository(Repository):
     """Interface for notification data access."""
