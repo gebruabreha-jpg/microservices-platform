@@ -101,9 +101,8 @@ router.py → handles HTTP
 service.py → business logic
 repository.py → database access
 outbox poller → background event processing
-
+ 
 Current split (this is correct):
-
 ┌───────────┬────────────────────────────────────────┬────────────────────────────────────────────────────────┐
 │   Layer   │                  File                  │                         Holds                          │
 ├───────────┼────────────────────────────────────────┼────────────────────────────────────────────────────────┤
@@ -116,4 +115,12 @@ Current split (this is correct):
 
 
 split workers into their own container:-
-Then you add one real file: app/worker.py as a standalone python -m app.worker entrypoint that builds the container, starts the poller + consumers, and blocks. That's a genuine second __main__, not a wrapper. Only do it when you actually run API and workers as separate deployments
+Then you add one real file: app/worker.py as a standalone python -m app.worker entrypoint that builds the container, starts the poller + consumers, and blocks. That's a genuine second__main__, not a wrapper. Only do it when you actually run API and workers as separate deployments.
+
+
+factories.py = HOW objects are created
+container.py = WHO gets which objects
+ABC + implementation(s) in the same file for redis,event, health.
+ABC  and implementation diferent for repostory.
+normal class for shared obeservability log, trace, metric.
+Plain functions, no ABC .... for redis, kakfa, rabitmq, databse  in facorty.py rule of thumb: class for things (with identity and state), function for actions. A connection factory is an action.

@@ -24,7 +24,7 @@ try:
 except ImportError:  # pragma: no cover - exporter not installed
     _PROMETHEUS_AVAILABLE = False
 
-from shared.tracing import _resource
+from shared.observability.tracing import _resource
 
 _meter_provider = MeterProvider(resource=_resource, metric_readers=_readers)
 

@@ -1,19 +1,17 @@
 """
 Dependency Injection Container for Payment Service.
 
-Only wires dependencies - all implementations are in shared/implementations/.
+Wires dependencies only. Concrete infra adapters live in `shared/`.
 """
 
-from shared.implementations import (
+from shared.events import RabbitMQEventPublisher
+from shared.factories import (
+    create_circuit_breakers,
     create_db_pool,
     get_rabbitmq_connection_factory,
-    create_circuit_breakers,
-    RabbitMQEventPublisher,
-    StructuredLogger,
-    DatabaseHealthChecker,
-    RabbitMQHealthChecker,
 )
-from shared.metrics import get_metric
+from shared.health import DatabaseHealthChecker
+from shared.observability import get_logger
 from app.repository.payment_repository import PostgresPaymentRepository
 
 
@@ -29,25 +27,22 @@ class Container:
         return RabbitMQEventPublisher(self.rabbitmq_factory, self.circuit_breakers.get("rabbitmq"))
 
     def get_payment_service(self):
-        """Create PaymentService with all dependencies injected."""
         from app.service.payment_service import PaymentService
 
         return PaymentService(
             payment_repository=PostgresPaymentRepository(self.db_pool),
             event_publisher=self._rabbitmq_publisher(),
-            metrics=get_metric(),
-            logger=StructuredLogger("payment-service"),
             health_checker=DatabaseHealthChecker(self.db_pool),
         )
 
     def get_outbox_poller(self):
-        """Create the outbox poller that relays payment_outbox rows to RabbitMQ."""
+        """Relays payment_outbox rows to the RabbitMQ 'notifications' queue."""
         from shared.outbox import OutboxPoller
 
         return OutboxPoller(
             self.db_pool,
             self._rabbitmq_publisher(),
-            StructuredLogger("payment-service.outbox"),
+            get_logger("payment-service.outbox"),
             table="payment_outbox",
         )
 

@@ -2,11 +2,11 @@
 Database utilities for Notification Service.
 
 Only contains service-specific utilities.
-Connection factories are in shared/implementations/.
+Connection factories are in shared/factories.py.
 """
 
 import pika
-from shared.implementations import create_db_pool, get_rabbitmq_connection_factory
+from shared.factories import create_db_pool, get_rabbitmq_connection_factory
 
 # Re-export for backward compatibility
 __all__ = [

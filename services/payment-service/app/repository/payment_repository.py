@@ -7,7 +7,7 @@ Implements PaymentRepository interface using PostgreSQL.
 from typing import Callable, List, Dict, Optional, Tuple
 from psycopg2 import pool
 
-from shared.interfaces import PaymentRepository
+from shared.repository import PaymentRepository
 from shared.outbox import enqueue_event
 
 OUTBOX_TABLE = "payment_outbox"

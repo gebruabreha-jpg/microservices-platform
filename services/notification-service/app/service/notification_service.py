@@ -1,10 +1,8 @@
 """
 Notification Service - Business Logic (OOP + DI)
 
-Follows:
-- Single Responsibility Principle: Each method does one thing
-- Dependency Inversion: Depends on interfaces, not implementations
-- Open/Closed: Can extend without modifying
+Swappable deps (repo/cache/publisher/health) are constructor-injected;
+logging/metrics/tracing are ambient (module-level, not injected).
 """
 
 import asyncio
@@ -15,44 +13,33 @@ import uuid
 from typing import Optional, List, Dict
 from opentelemetry.trace import Status, StatusCode
 
-from shared.interfaces import (
-    NotificationRepository,
-    EventPublisher,
-    MetricsClient,
-    Logger,
-    HealthChecker,
-)
-from shared.tracing import get_tracer
+from shared.events import EventPublisher
+from shared.health import HealthChecker
+from shared.repository import NotificationRepository
+from shared.observability import get_logger, get_metric, get_tracer
 
 
 class NotificationService:
-    """
-    Notification service with dependency injection.
-
-    All dependencies are injected through the constructor,
-    following the Dependency Inversion Principle.
-    """
+    """Notification business logic + RabbitMQ consumers. Swappable dependencies
+    (repo/publisher/health) are injected; logging/metrics/tracing are ambient."""
 
     def __init__(
         self,
         notification_repository: NotificationRepository,
         event_publisher: EventPublisher,
-        metrics: MetricsClient,
-        logger: Logger,
         health_checker: HealthChecker,
     ):
         self._notification_repository = notification_repository
         self._event_publisher = event_publisher
-        self._metrics = metrics
-        self._logger = logger
         self._health_checker = health_checker
+        self._logger = get_logger("notification-service")
         self._tracer = get_tracer("notification-service")
         # Dedicated event loop for the blocking RabbitMQ consumer thread.
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         # Set on shutdown to break the consumer loops cleanly.
         self._stop = threading.Event()
 
-        # Initialize metrics
+        metrics = get_metric()
         self._notification_counter = metrics.create_counter(
             "notification_requests_total",
             description="Total notification requests",

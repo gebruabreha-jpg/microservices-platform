@@ -2,7 +2,7 @@
 Database utilities for Payment Service.
 
 Only contains service-specific utilities.
-Connection factories are in shared/implementations/.
+Connection factories are in shared/factories.py.
 """
 
 import os
@@ -11,7 +11,7 @@ import psycopg2
 import pika
 
 from shared.config import require_env
-from shared.implementations import create_db_pool, get_rabbitmq_connection_factory
+from shared.factories import create_db_pool, get_rabbitmq_connection_factory
 from resilience import default_retry
 from resilience.circuit_breaker import rabbitmq_breaker
 

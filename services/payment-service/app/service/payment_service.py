@@ -1,10 +1,8 @@
 """
 Payment Service - Business Logic (OOP + DI).
 
-Follows:
-- Single Responsibility Principle: Each method does one thing
-- Dependency Inversion: Depends on interfaces, not implementations
-- Open/Closed: Can extend without modifying
+Swappable deps (repo/cache/publisher/health) are constructor-injected;
+logging/metrics/tracing are ambient (module-level, not injected).
 """
 
 import json
@@ -14,41 +12,30 @@ import uuid
 from typing import Optional, List, Dict
 from opentelemetry.trace import Status, StatusCode
 
-from shared.interfaces import (
-    PaymentRepository,
-    EventPublisher,
-    MetricsClient,
-    Logger,
-    HealthChecker,
-)
-from shared.tracing import get_tracer
+from shared.events import EventPublisher
+from shared.health import HealthChecker
+from shared.repository import PaymentRepository
+from shared.observability import get_logger, get_metric, get_tracer
 from app.schema.payment_schema import PaymentCreate
 
 
 class PaymentService:
-    """
-    Payment service with dependency injection.
-
-    All dependencies are injected through the constructor,
-    following the Dependency Inversion Principle.
-    """
+    """Payment business logic. Swappable dependencies (repo/publisher/health) are
+    injected; logging/metrics/tracing are ambient infrastructure."""
 
     def __init__(
         self,
         payment_repository: PaymentRepository,
         event_publisher: EventPublisher,
-        metrics: MetricsClient,
-        logger: Logger,
         health_checker: HealthChecker,
     ):
         self._payment_repository = payment_repository
         self._event_publisher = event_publisher
-        self._metrics = metrics
-        self._logger = logger
         self._health_checker = health_checker
+        self._logger = get_logger("payment-service")
         self._tracer = get_tracer("payment-service")
 
-        # Initialize metrics
+        metrics = get_metric()
         self._payment_counter = metrics.create_counter(
             "payment_requests_total",
             description="Total payment requests",
@@ -150,11 +137,11 @@ def start_kafka_consumer(stop_event=None):
     """
     import asyncio
     from kafka import KafkaConsumer
-    from opentelemetry import trace
-    from shared.logging import get_logger, log_event
+
+    from shared.observability import get_logger, get_tracer
 
     logger = get_logger("payment-service.kafka_consumer")
-    tracer = trace.get_tracer("payment-service.kafka_consumer")
+    tracer = get_tracer("payment-service.kafka_consumer")
 
     # This thread has no running event loop; create one so the async service
     # methods actually execute instead of being discarded as un-awaited coroutines.
@@ -195,9 +182,7 @@ def start_kafka_consumer(stop_event=None):
                             except Exception as e:
                                 span.set_status(Status(StatusCode.ERROR, str(e)))
                                 span.record_exception(e)
-                                log_event(
-                                    logger,
-                                    "error",
+                                logger.error(
                                     "Failed to process order event",
                                     error=str(e),
                                     order_id=event.get("order_id"),
@@ -205,7 +190,7 @@ def start_kafka_consumer(stop_event=None):
                                 )
         except Exception as e:
             if not stopped():
-                log_event(logger, "error", "Kafka consumer error", error=str(e))
+                logger.error("Kafka consumer error", error=str(e))
                 time.sleep(5)
         finally:
             if consumer is not None:
@@ -213,4 +198,4 @@ def start_kafka_consumer(stop_event=None):
                     consumer.close()
                 except Exception:
                     pass
-    log_event(logger, "info", "Kafka consumer stopped")
+    logger.info("Kafka consumer stopped")

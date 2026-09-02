@@ -7,7 +7,7 @@ Implements OrderRepository interface using PostgreSQL.
 from typing import Callable, List, Dict, Optional, Tuple
 from psycopg2 import pool
 
-from shared.interfaces import OrderRepository
+from shared.repository import OrderRepository
 from shared.outbox import enqueue_event
 
 OUTBOX_TABLE = "order_outbox"

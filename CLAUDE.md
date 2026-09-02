@@ -78,6 +78,12 @@ logic, plain classes, **constructor dependency injection**, depend on ABCs in
 `shared/interfaces`) → `app/repository/*_repository.py` (**raw psycopg2**, not an
 ORM).
 
+Services are injected only the **swappable** dependencies (repository, cache,
+event publisher, health checker) as `shared/*` ABCs. Logging, metrics and
+tracing are **ambient** — the service calls `get_logger()` / `get_metric()` /
+`get_tracer()` from `shared.observability` directly, not via a constructor
+param.
+
 `app/container.py` wires it: `get_container()` returns a **process-wide
 singleton** `Container` (one DB pool / broker factory per service). Routers and
 the lifespan handler both call `get_container()`.
@@ -92,12 +98,27 @@ nothing imports them). Ignore them.
 
 ### Shared packages (`services/`, each copied into every image)
 
-| Package | Contents |
+`shared/` is organised **by concern** — each module holds its interface *and*
+its implementation(s). Import the specific module, never `shared` itself.
+
+| Module | Contents |
 |---|---|
-| `shared/` | Observability + config only. `tracing.py` (OTLP→Tempo, exports `_resource`), `metrics.py` (`get_metric()` OTel meter + `setup_metrics_endpoint()`), `logging.py` (JSON to stdout), `config.py` (`require_env`), `outbox.py`, `ratelimit.py`, `interfaces/` (ABCs), `implementations/` |
-| `shared/implementations/__init__.py` | **All** concrete impls + connection factories (DRY): `create_db_pool`, `create_redis_client`, `create_kafka_producer`, `get_rabbitmq_connection_factory`, `RedisCacheClient`, `KafkaEventPublisher`, `RabbitMQEventPublisher`, `StructuredLogger`, `*HealthChecker` |
+| `shared/repository.py` | `Repository` / `OrderRepository` / `PaymentRepository` / `NotificationRepository` ABCs + `OutboxEvent` type. Concrete repos live in each service's `app/repository/`. |
+| `shared/cache.py` | `CacheClient` ABC + `RedisCacheClient` |
+| `shared/events.py` | `EventPublisher` ABC + `KafkaEventPublisher` + `RabbitMQEventPublisher` |
+| `shared/health.py` | `HealthChecker` ABC + `DatabaseHealthChecker` + `RabbitMQHealthChecker` |
+| `shared/factories.py` | Connection factories: `create_db_pool`, `create_redis_client`, `create_kafka_producer`, `get_rabbitmq_connection_factory`, `create_circuit_breakers` |
+| `shared/outbox.py` | `enqueue_event()` + `OutboxPoller` |
+| `shared/config.py` | `require_env`, `get_env` |
+| `shared/ratelimit.py` | `setup_rate_limiting(app)` (slowapi limiter + 429 handler + middleware) |
+| `shared/observability/` | `logging.py` (`get_logger()` → `StructuredLogger`, JSON to stdout), `metrics.py` (`get_metric()` OTel meter + `setup_metrics_endpoint()`), `tracing.py` (`setup_tracing`, `get_tracer`, `flush_telemetry`, `_resource`). Re-exported from `shared.observability`. |
 | `resilience/` | `circuit_breaker.py` (pybreaker instances), `retry.py` (`@default_retry`, tenacity). Deliberately a **separate package**, not merged into `shared/`. |
 | `middleware/` | `CorrelationIdMiddleware` (X-Correlation-ID in/out, into `request.state`). Also a separate package by design. |
+
+Rule for the split: an interface + DI only when the thing has multiple real
+implementations or is mocked in tests (repo, cache, publisher, health).
+Cross-cutting infra with one implementation (logging, metrics, tracing, config)
+is a plain module import.
 
 ### Schema & config
 

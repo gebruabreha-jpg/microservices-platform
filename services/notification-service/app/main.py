@@ -8,7 +8,7 @@ Background work (started/stopped by the lifespan handler):
 
 import os
 
-# Service identity - must be set before importing shared.tracing/metrics, which
+# Service identity - must be set before importing shared.observability, which
 # freeze the OpenTelemetry resource (service.name/version) at import time.
 os.environ.setdefault("SERVICE_NAME", "notification-service")
 os.environ.setdefault("SERVICE_VERSION", "1.0.0")
@@ -21,10 +21,13 @@ from fastapi import FastAPI  # noqa: E402
 
 from app.container import get_container  # noqa: E402
 from app.routes.notification_router import router  # noqa: E402
-from shared.logging import get_logger, log_event  # noqa: E402
-from shared.metrics import setup_metrics_endpoint  # noqa: E402
+from shared.observability import (  # noqa: E402
+    flush_telemetry,
+    get_logger,
+    setup_metrics_endpoint,
+    setup_tracing,
+)
 from shared.ratelimit import setup_rate_limiting  # noqa: E402
-from shared.tracing import flush_telemetry, setup_tracing  # noqa: E402
 from middleware import CorrelationIdMiddleware  # noqa: E402
 
 logger = get_logger("notification-service")
@@ -38,7 +41,7 @@ async def lifespan(app: FastAPI):
     global _consumer_service
 
     if os.getenv("DISABLE_BACKGROUND_WORKERS") == "1":
-        log_event(logger, "info", "notification-service started (background workers disabled)")
+        logger.info("notification-service started (background workers disabled)")
         yield
         return
 
@@ -50,7 +53,7 @@ async def lifespan(app: FastAPI):
         t = threading.Thread(target=target, name=name, daemon=True)
         t.start()
         _background_threads.append(t)
-    log_event(logger, "info", "notification-service started")
+    logger.info("notification-service started")
 
     try:
         yield
@@ -60,7 +63,7 @@ async def lifespan(app: FastAPI):
         for t in _background_threads:
             t.join(timeout=5)
         flush_telemetry()
-        log_event(logger, "info", "Shutting down notification-service")
+        logger.info("Shutting down notification-service")
 
 
 app = FastAPI(title="notification-service", lifespan=lifespan)

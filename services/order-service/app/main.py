@@ -24,7 +24,7 @@ main.py
 
 import os
 
-# Service identity - must be set before importing shared.tracing/metrics, which
+# Service identity - must be set before importing shared.observability, which
 # freeze the OpenTelemetry resource (service.name/version) at import time.
 os.environ.setdefault("SERVICE_NAME", "order-service")
 os.environ.setdefault("SERVICE_VERSION", "1.0.0")
@@ -37,10 +37,13 @@ from fastapi import FastAPI  # noqa: E402
 
 from app.container import get_container  # noqa: E402
 from app.routes.order_router import router  # noqa: E402
-from shared.logging import get_logger, log_event  # noqa: E402
-from shared.metrics import setup_metrics_endpoint  # noqa: E402
+from shared.observability import (  # noqa: E402
+    flush_telemetry,
+    get_logger,
+    setup_metrics_endpoint,
+    setup_tracing,
+)
 from shared.ratelimit import setup_rate_limiting  # noqa: E402
-from shared.tracing import flush_telemetry, setup_tracing  # noqa: E402
 from middleware import CorrelationIdMiddleware  # noqa: E402
 
 logger = get_logger("order-service")
@@ -54,7 +57,7 @@ async def lifespan(app: FastAPI):
     global _outbox_poller
 
     if os.getenv("DISABLE_BACKGROUND_WORKERS") == "1":
-        log_event(logger, "info", "order-service started (background workers disabled)")
+        logger.info("order-service started (background workers disabled)")
         yield
         return
 
@@ -62,7 +65,7 @@ async def lifespan(app: FastAPI):
     t = threading.Thread(target=_outbox_poller.run, name="order-outbox-poller", daemon=True)
     t.start()
     _background_threads.append(t)
-    log_event(logger, "info", "order-service started")
+    logger.info("order-service started")
 
     try:
         yield
@@ -72,7 +75,7 @@ async def lifespan(app: FastAPI):
         for thread in _background_threads:
             thread.join(timeout=5)
         flush_telemetry()
-        log_event(logger, "info", "Shutting down order-service")
+        logger.info("Shutting down order-service")
 
 #lifespan=lifespanç=When you start and stop, use my lifespan() function.
 app = FastAPI(title="order-service", lifespan=lifespan)

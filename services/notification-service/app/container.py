@@ -1,18 +1,12 @@
 """
 Dependency Injection Container for Notification Service.
 
-Only wires dependencies - all implementations are in shared/implementations/.
+Wires dependencies only. Concrete infra adapters live in `shared/`.
 """
 
-from shared.implementations import (
-    create_db_pool,
-    get_rabbitmq_connection_factory,
-    create_circuit_breakers,
-    RabbitMQEventPublisher,
-    StructuredLogger,
-    RabbitMQHealthChecker,
-)
-from shared.metrics import get_metric
+from shared.events import RabbitMQEventPublisher
+from shared.factories import create_circuit_breakers, create_db_pool, get_rabbitmq_connection_factory
+from shared.health import RabbitMQHealthChecker
 from app.repository.notification_repository import PostgresNotificationRepository
 
 
@@ -25,7 +19,6 @@ class Container:
         self.circuit_breakers = create_circuit_breakers()
 
     def get_notification_service(self):
-        """Create NotificationService with all dependencies injected."""
         from app.service.notification_service import NotificationService
 
         return NotificationService(
@@ -34,8 +27,6 @@ class Container:
                 self.rabbitmq_connection_factory,
                 self.circuit_breakers.get("rabbitmq"),
             ),
-            metrics=get_metric(),
-            logger=StructuredLogger("notification-service"),
             health_checker=RabbitMQHealthChecker(self.rabbitmq_connection_factory),
         )
 

@@ -7,7 +7,7 @@ Implements NotificationRepository interface using PostgreSQL.
 from typing import List, Dict
 from psycopg2 import pool
 
-from shared.interfaces import NotificationRepository
+from shared.repository import NotificationRepository
 
 
 class PostgresNotificationRepository(NotificationRepository):
