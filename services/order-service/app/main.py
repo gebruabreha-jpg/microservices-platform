@@ -1,39 +1,69 @@
 """
-Order Service - Main Application Entry Point
+Order Service - Main Application Entry Point.
 
-Uses Dependency Injection Container to wire dependencies.
+Background work (started/stopped by the lifespan handler):
+  - Outbox poller: relays order_outbox rows to the Kafka "orders" topic
 """
 
 import os
-from fastapi import FastAPI
-from app.routes.order_router import router
-from app.container import Container
-from shared.tracing import setup_tracing, flush_telemetry
-from shared.logging import get_logger, log_event
-from middleware import CorrelationIdMiddleware
 
-# Service identity for telemetry
+# Service identity - must be set before importing shared.tracing/metrics, which
+# freeze the OpenTelemetry resource (service.name/version) at import time.
 os.environ.setdefault("SERVICE_NAME", "order-service")
 os.environ.setdefault("SERVICE_VERSION", "1.0.0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
-# 1. Logger first
+import threading  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+
+from fastapi import FastAPI  # noqa: E402
+
+from app.container import get_container  # noqa: E402
+from app.routes.order_router import router  # noqa: E402
+from shared.logging import get_logger, log_event  # noqa: E402
+from shared.metrics import setup_metrics_endpoint  # noqa: E402
+from shared.ratelimit import setup_rate_limiting  # noqa: E402
+from shared.tracing import flush_telemetry, setup_tracing  # noqa: E402
+from middleware import CorrelationIdMiddleware  # noqa: E402
+
 logger = get_logger("order-service")
 
-# Create DI container
-container = Container()
+_outbox_poller = None
+_background_threads: list[threading.Thread] = []
 
-# Create app
-app = FastAPI(title="order-service")
 
-# Middleware
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _outbox_poller
+
+    if os.getenv("DISABLE_BACKGROUND_WORKERS") == "1":
+        log_event(logger, "info", "order-service started (background workers disabled)")
+        yield
+        return
+
+    _outbox_poller = get_container().get_outbox_poller()
+    t = threading.Thread(target=_outbox_poller.run, name="order-outbox-poller", daemon=True)
+    t.start()
+    _background_threads.append(t)
+    log_event(logger, "info", "order-service started")
+
+    try:
+        yield
+    finally:
+        if _outbox_poller is not None:
+            _outbox_poller.stop()
+        for thread in _background_threads:
+            thread.join(timeout=5)
+        flush_telemetry()
+        log_event(logger, "info", "Shutting down order-service")
+
+
+app = FastAPI(title="order-service", lifespan=lifespan)
 app.add_middleware(CorrelationIdMiddleware)
-
-# Observability
+setup_rate_limiting(app, logger)
 setup_tracing(app, os.getenv("SERVICE_NAME"))
-
-# Routes
 app.include_router(router)
+setup_metrics_endpoint(app)
 
 
 @app.get("/")
@@ -43,15 +73,9 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "order-service"}
 
 
 @app.get("/ready")
 async def readiness():
     return {"ready": True}
-
-
-@app.on_event("shutdown")
-def shutdown():
-    log_event(logger, "info", "Shutting down order-service")
-    flush_telemetry()

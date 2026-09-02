@@ -13,3 +13,4 @@ class PaymentResponse(BaseModel):
     order_id: int
     amount: float
     status: str
+    correlation_id: Optional[str] = None

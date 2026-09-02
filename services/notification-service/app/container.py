@@ -38,3 +38,14 @@ class Container:
             logger=StructuredLogger("notification-service"),
             health_checker=RabbitMQHealthChecker(self.rabbitmq_connection_factory),
         )
+
+
+_container = None
+
+
+def get_container() -> "Container":
+    """Return the process-wide DI container (one DB pool / broker factory per service)."""
+    global _container
+    if _container is None:
+        _container = Container()
+    return _container

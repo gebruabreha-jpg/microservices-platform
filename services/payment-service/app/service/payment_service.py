@@ -80,36 +80,47 @@ class PaymentService:
             span.set_attribute("payment.amount", payment.amount)
             span.set_attribute("correlation_id", correlation_id)
 
+            def build_event(new_payment_id):
+                return "notifications", {
+                    "type": "payment_received",
+                    "payment_id": new_payment_id,
+                    "order_id": payment.order_id,
+                    "correlation_id": correlation_id,
+                }
+
             try:
                 # Idempotency check
                 existing = await self._payment_repository.get_by_order_id(payment.order_id)
                 if existing:
                     span.set_attribute("payment.idempotent", True)
-                    return {"id": existing["id"], "status": existing["status"], "correlation_id": correlation_id, "message": "idempotent"}
-
-                # Database operation
-                with self._tracer.start_as_current_span("db.insert_payment") as db_span:
-                    payment_id = await self._payment_repository.create(payment)
-                    db_span.set_attribute("payment.id", payment_id)
-
-                # Publish event
-                with self._tracer.start_as_current_span("rabbitmq.publish_notification") as mq_span:
-                    await self._event_publisher.publish("notifications", {
-                        "type": "payment_received",
-                        "payment_id": payment_id,
-                        "order_id": payment.order_id,
+                    return {
+                        "id": existing["id"],
+                        "order_id": existing["order_id"],
+                        "amount": existing["amount"],
+                        "status": existing["status"],
                         "correlation_id": correlation_id,
-                    })
-                    mq_span.set_attribute("messaging.system", "rabbitmq")
-                    mq_span.set_attribute("messaging.destination", "notifications")
-                    mq_span.set_attribute("payment.id", payment_id)
+                    }
+
+                # Database write + outbox event, atomically. The "notifications"
+                # event is relayed to RabbitMQ by the outbox poller.
+                with self._tracer.start_as_current_span("db.insert_payment") as db_span:
+                    payment_id = await self._payment_repository.create(
+                        payment, outbox_event=build_event
+                    )
+                    db_span.set_attribute("payment.id", payment_id)
 
                 # Record metrics
                 self._payment_counter.add(1, {"method": "POST", "endpoint": "/payments", "status": "success"})
                 self._logger.info("Payment processed", payment_id=payment_id, correlation_id=correlation_id)
                 span.set_status(Status(StatusCode.OK))
 
-                return {"id": payment_id, "status": "processing", "correlation_id": correlation_id}
+                return {
+                    "id": payment_id,
+                    "order_id": payment.order_id,
+                    "amount": payment.amount,
+                    "status": "processing",
+                    "correlation_id": correlation_id,
+                }
 
             except Exception as e:
                 self._payment_counter.add(1, {"method": "POST", "endpoint": "/payments", "status": "error"})
@@ -131,8 +142,13 @@ class PaymentService:
         return await self.process_payment(payment, request_id=event.get("correlation_id"))
 
 
-def start_kafka_consumer():
-    """Start Kafka consumer in a background thread."""
+def start_kafka_consumer(stop_event=None):
+    """Consume ``orders`` events and create payments. Runs in a daemon thread.
+
+    ``stop_event`` (a threading.Event) lets the lifespan handler break the loop
+    for a clean shutdown.
+    """
+    import asyncio
     from kafka import KafkaConsumer
     from opentelemetry import trace
     from shared.logging import get_logger, log_event
@@ -140,12 +156,20 @@ def start_kafka_consumer():
     logger = get_logger("payment-service.kafka_consumer")
     tracer = trace.get_tracer("payment-service.kafka_consumer")
 
-    # Create service instance for handling events
-    from app.container import Container
-    container = Container()
-    service = container.get_payment_service()
+    # This thread has no running event loop; create one so the async service
+    # methods actually execute instead of being discarded as un-awaited coroutines.
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
-    while True:
+    # Create service instance for handling events
+    from app.container import get_container
+    service = get_container().get_payment_service()
+
+    def stopped() -> bool:
+        return stop_event is not None and stop_event.is_set()
+
+    while not stopped():
+        consumer = None
         try:
             consumer = KafkaConsumer(
                 "orders",
@@ -155,15 +179,38 @@ def start_kafka_consumer():
                 enable_auto_commit=True,
                 value_deserializer=lambda m: json.loads(m.decode("utf-8")),
             )
-            for message in consumer:
-                event = message.value
-                if event.get("status") == "created":
-                    with tracer.start_as_current_span("consume_order_event") as span:
-                        span.set_attribute("messaging.system", "kafka")
-                        span.set_attribute("messaging.topic", "orders")
-                        span.set_attribute("messaging.consumer_group", "payment-service")
-                        span.set_attribute("order.id", event.get("order_id"))
-                        service.create_payment_from_event(event)
+            while not stopped():
+                for records in consumer.poll(timeout_ms=1000).values():
+                    for message in records:
+                        event = message.value
+                        if event.get("status") != "created":
+                            continue
+                        with tracer.start_as_current_span("consume_order_event") as span:
+                            span.set_attribute("messaging.system", "kafka")
+                            span.set_attribute("messaging.topic", "orders")
+                            span.set_attribute("messaging.consumer_group", "payment-service")
+                            span.set_attribute("order.id", event.get("order_id"))
+                            try:
+                                loop.run_until_complete(service.create_payment_from_event(event))
+                            except Exception as e:
+                                span.set_status(Status(StatusCode.ERROR, str(e)))
+                                span.record_exception(e)
+                                log_event(
+                                    logger,
+                                    "error",
+                                    "Failed to process order event",
+                                    error=str(e),
+                                    order_id=event.get("order_id"),
+                                    correlation_id=event.get("correlation_id"),
+                                )
         except Exception as e:
-            log_event(logger, "error", "Kafka consumer error", error=str(e))
-            time.sleep(5)
+            if not stopped():
+                log_event(logger, "error", "Kafka consumer error", error=str(e))
+                time.sleep(5)
+        finally:
+            if consumer is not None:
+                try:
+                    consumer.close()
+                except Exception:
+                    pass
+    log_event(logger, "info", "Kafka consumer stopped")

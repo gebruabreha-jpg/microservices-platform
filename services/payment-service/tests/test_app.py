@@ -1,7 +1,8 @@
 import pytest
 from starlette.testclient import TestClient
-from unittest.mock import MagicMock, patch
+
 from app.main import app
+from app.routes import payment_router
 
 
 @pytest.fixture
@@ -12,36 +13,50 @@ def client():
 
 class TestHealth:
     def test_health_check(self, client):
-        with patch("app.service.payment_service.check_dependencies") as mock_deps:
-            mock_deps.return_value = {"postgres": True, "rabbitmq": True}
-            response = client.get("/health")
+        response = client.get("/health")
         assert response.status_code == 200
         assert response.json()["service"] == "payment-service"
+
+    def test_ready_reports_dependencies(self, client, monkeypatch):
+        monkeypatch.setattr(
+            "app.core.database.check_dependencies",
+            lambda: {"postgres": True, "rabbitmq": True},
+        )
+        response = client.get("/ready")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
 
 
 class TestMetrics:
-    def test_metrics_returns_json(self, client):
+    def test_metrics_returns_prometheus_text(self, client):
         response = client.get("/metrics")
         assert response.status_code == 200
-        assert response.json()["service"] == "payment-service"
+        assert response.headers["content-type"].startswith("text/plain")
 
 
 class TestProcessPayment:
-    def test_payment_success(self, client):
-        with patch("app.routes.payment_router.process_payment") as mock_process:
-            mock_process.return_value = {"id": 1, "status": "processing", "correlation_id": "abc-123"}
-            response = client.post(
-                "/payments",
-                json={"order_id": 1, "amount": 59.98},
-            )
+    def test_payment_success(self, client, monkeypatch):
+        async def fake_process(payment, request_id=None):
+            return {
+                "id": 1,
+                "order_id": 1,
+                "amount": 59.98,
+                "status": "processing",
+                "correlation_id": "abc-123",
+            }
+
+        monkeypatch.setattr(payment_router.payment_service, "process_payment", fake_process)
+        response = client.post("/payments", json={"order_id": 1, "amount": 59.98})
         assert response.status_code == 200
         assert response.json()["status"] == "processing"
 
 
 class TestListPayments:
-    def test_list_payments_empty(self, client):
-        with patch("app.routes.payment_router.list_payments") as mock_list:
-            mock_list.return_value = []
-            response = client.get("/payments")
+    def test_list_payments_empty(self, client, monkeypatch):
+        async def fake_list(limit=20, offset=0):
+            return []
+
+        monkeypatch.setattr(payment_router.payment_service, "list_payments", fake_list)
+        response = client.get("/payments")
         assert response.status_code == 200
         assert response.json() == []

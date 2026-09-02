@@ -10,6 +10,7 @@ import json
 import psycopg2
 import pika
 
+from shared.config import require_env
 from shared.implementations import create_db_pool, get_rabbitmq_connection_factory
 from resilience import default_retry
 from resilience.circuit_breaker import rabbitmq_breaker
@@ -25,10 +26,10 @@ def get_db():
         return db_pool.getconn()
     return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=int(os.getenv("POSTGRES_PORT", 5432)),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
         dbname=os.getenv("POSTGRES_DB", "appdb"),
-        user=os.getenv("POSTGRES_USER", "admin"),
-        password=os.getenv("POSTGRES_PASSWORD", "secret"),
+        user=require_env("POSTGRES_USER"),
+        password=require_env("POSTGRES_PASSWORD"),
     )
 
 
@@ -41,20 +42,24 @@ def release_db(conn):
 
 
 def queue_rabbitmq_job(queue, message):
-    """Publish message to RabbitMQ queue with circuit breaker."""
-    if rabbitmq_breaker:
-        with rabbitmq_breaker:
-            _queue_rabbitmq_job_impl(queue, message)
-    else:
-        _queue_rabbitmq_job_impl(queue, message)
+    """Publish message to RabbitMQ queue, guarded by the RabbitMQ circuit breaker.
+
+    ``rabbitmq_breaker.call`` runs the publish and records the outcome, so
+    repeated broker failures trip the breaker and fail fast instead of piling
+    up blocked connections.
+    """
+    rabbitmq_breaker.call(_queue_rabbitmq_job_impl, queue, message)
 
 
 @default_retry
 def _queue_rabbitmq_job_impl(queue, message):
-    """Internal implementation of RabbitMQ job publishing."""
+    """Internal implementation of RabbitMQ job publishing.
+
+    Topology is provisioned from rabbitmq/definitions.json at broker boot, so
+    this does not redeclare the queue.
+    """
     connection = rabbitmq_factory()
     channel = connection.channel()
-    channel.queue_declare(queue=queue, durable=True)
     channel.basic_publish(
         exchange="",
         routing_key=queue,

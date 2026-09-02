@@ -7,7 +7,9 @@ Follows:
 - Open/Closed: Can extend without modifying
 """
 
+import asyncio
 import json
+import threading
 import time
 import uuid
 from typing import Optional, List, Dict
@@ -45,6 +47,10 @@ class NotificationService:
         self._logger = logger
         self._health_checker = health_checker
         self._tracer = get_tracer("notification-service")
+        # Dedicated event loop for the blocking RabbitMQ consumer thread.
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        # Set on shutdown to break the consumer loops cleanly.
+        self._stop = threading.Event()
 
         # Initialize metrics
         self._notification_counter = metrics.create_counter(
@@ -88,7 +94,13 @@ class NotificationService:
                 self._logger.info("Notification sent", notification_id=notification_id, correlation_id=correlation_id)
                 span.set_status(Status(StatusCode.OK))
 
-                return {"id": notification_id, "status": "queued", "correlation_id": correlation_id}
+                return {
+                    "id": notification_id,
+                    "type": notification_data.type,
+                    "order_id": notification_data.order_id,
+                    "status": "queued",
+                    "correlation_id": correlation_id,
+                }
 
             except Exception as e:
                 self._notification_counter.add(1, {"method": "POST", "endpoint": "/notifications", "status": "error"})
@@ -104,8 +116,12 @@ class NotificationService:
         """List notifications with pagination."""
         return await self._notification_repository.get_all(limit=limit, offset=offset)
 
-    async def handle_notification(self, ch, method, properties, body) -> None:
-        """Handle incoming notification from RabbitMQ."""
+    def _handle_message_body(self, body) -> None:
+        """Parse and persist one notification message (synchronous).
+
+        Runs the async ``send_notification`` path on the consumer thread's
+        private event loop. Raises on any failure so the caller can dead-letter.
+        """
         from app.schema.notification_schema import NotificationCreate
 
         message = json.loads(body)
@@ -120,53 +136,90 @@ class NotificationService:
                 order_id=message.get("order_id"),
                 status="queued",
             )
+            self._loop.run_until_complete(
+                self.send_notification(notification, request_id=message.get("correlation_id"))
+            )
+            span.set_status(Status(StatusCode.OK))
+
+    def stop(self) -> None:
+        """Signal the consumer loops to exit (called on application shutdown)."""
+        self._stop.set()
+
+    def _consume_forever(self, queue: str, on_message, *, span_label: str) -> None:
+        """Shared reconnect/poll loop for a blocking pika consumer.
+
+        Uses ``process_data_events`` rather than ``start_consuming`` so the
+        ``_stop`` event is checked roughly once a second and shutdown is clean.
+        """
+        from app.core.database import get_rabbitmq_connection, setup_dlq
+
+        while not self._stop.is_set():
+            connection = None
             try:
-                await self.send_notification(notification, request_id=message.get("correlation_id"))
+                connection = get_rabbitmq_connection()
+                channel = connection.channel()
+                setup_dlq(channel)
+                if queue == "notifications":
+                    # Matches rabbitmq/definitions.json exactly (incl. the DLX
+                    # args) so redeclaration never trips PRECONDITION_FAILED.
+                    channel.queue_declare(
+                        queue="notifications",
+                        durable=True,
+                        arguments={
+                            "x-dead-letter-exchange": "dlx",
+                            "x-dead-letter-routing-key": "dlq",
+                        },
+                    )
+                channel.basic_qos(prefetch_count=10)
+                channel.basic_consume(queue=queue, on_message_callback=on_message, auto_ack=False)
+                self._logger.info(f"{span_label} started", queue=queue)
+                while not self._stop.is_set():
+                    connection.process_data_events(time_limit=1)
+            except Exception as e:
+                if not self._stop.is_set():
+                    self._logger.error(f"{span_label} error, reconnecting in 5s", error=str(e))
+                    self._stop.wait(5)
+            finally:
+                if connection is not None and connection.is_open:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+        self._logger.info(f"{span_label} stopped", queue=queue)
+
+    def start_consumer(self) -> None:
+        """Consume notification messages from RabbitMQ (blocking; daemon thread).
+
+        A message that fails processing is nacked without requeue, so the broker
+        dead-letters it to the ``dlx`` exchange / ``dlq`` queue.
+        """
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+
+        def on_message(ch, method, properties, body):
+            try:
+                self._handle_message_body(body)
                 ch.basic_ack(delivery_tag=method.delivery_tag)
-                span.set_status(Status(StatusCode.OK))
             except Exception as e:
                 self._dlq_counter.add(1)
+                self._logger.error("Notification handling failed, dead-lettering", error=str(e))
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
 
-    async def start_consumer(self) -> None:
-        """Start RabbitMQ consumer."""
-        from app.core.database import get_rabbitmq_connection, setup_dlq
+        self._consume_forever("notifications", on_message, span_label="Notification consumer")
 
-        while True:
+    def start_dlq_consumer(self) -> None:
+        """Consume dead-lettered messages for logging and alerting (blocking; daemon thread)."""
+
+        def on_dlq_message(ch, method, properties, body):
             try:
-                connection = get_rabbitmq_connection()
-                channel = connection.channel()
-                setup_dlq(channel)
-                channel.queue_declare(queue="notifications", durable=True, arguments={"x-dead-letter-exchange": "dlx"})
-                channel.basic_consume(queue="notifications", on_message_callback=self.handle_notification, auto_ack=False)
-                channel.start_consuming()
-            except Exception as e:
-                self._logger.error("Consumer error", error=str(e))
-                time.sleep(5)
+                message = json.loads(body)
+            except ValueError:
+                message = {"raw": body.decode("utf-8", "replace")}
+            with self._tracer.start_as_current_span("handle_dlq_message") as span:
+                span.set_attribute("messaging.system", "rabbitmq")
+                span.set_attribute("messaging.queue", "dlq")
+                self._logger.error("DLQ message received", message=message)
+                span.set_status(Status(StatusCode.OK))
+            ch.basic_ack(delivery_tag=method.delivery_tag)
 
-    async def start_dlq_consumer(self) -> None:
-        """Start DLQ consumer."""
-        from app.core.database import get_rabbitmq_connection, setup_dlq
-
-        while True:
-            try:
-                connection = get_rabbitmq_connection()
-                channel = connection.channel()
-                setup_dlq(channel)
-
-                def on_dlq_message(ch, method, properties, body):
-                    message = json.loads(body)
-                    with self._tracer.start_as_current_span("handle_dlq_message") as span:
-                        span.set_attribute("messaging.system", "rabbitmq")
-                        span.set_attribute("messaging.queue", "dlq")
-                        self._logger.error("DLQ message received", message=message)
-                        span.set_status(Status(StatusCode.OK))
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
-
-                channel.basic_consume(queue="dlq", on_message_callback=on_dlq_message, auto_ack=False)
-                channel.start_consuming()
-            except Exception as e:
-                self._logger.error("DLQ consumer error", error=str(e))
-                time.sleep(5)
+        self._consume_forever("dlq", on_dlq_message, span_label="DLQ consumer")

@@ -4,10 +4,13 @@ Order Repository Implementation.
 Implements OrderRepository interface using PostgreSQL.
 """
 
-from typing import List, Dict
+from typing import Callable, List, Dict, Optional, Tuple
 from psycopg2 import pool
 
 from shared.interfaces import OrderRepository
+from shared.outbox import enqueue_event
+
+OUTBOX_TABLE = "order_outbox"
 
 
 class PostgresOrderRepository(OrderRepository):
@@ -16,9 +19,19 @@ class PostgresOrderRepository(OrderRepository):
     def __init__(self, db_pool: pool.ThreadedConnectionPool):
         self._db_pool = db_pool
 
-    async def create(self, order_data) -> int:
-        """Create a new order and return its ID."""
+    async def create(
+        self,
+        order_data,
+        outbox_event: Optional[Callable[[int], Tuple[str, dict]]] = None,
+    ) -> int:
+        """Create a new order and return its ID.
+
+        If ``outbox_event`` is given it is called with the new order id and must
+        return ``(topic, payload)``; that event is written to the outbox in the
+        same transaction as the order, so it cannot be lost or published early.
+        """
         conn = self._db_pool.getconn()
+        cur = None
         try:
             cur = conn.cursor()
             cur.execute(
@@ -26,10 +39,17 @@ class PostgresOrderRepository(OrderRepository):
                 (order_data.customer_id, order_data.product_id, order_data.quantity, order_data.amount, order_data.status),
             )
             order_id = cur.fetchone()[0]
+            if outbox_event is not None:
+                topic, payload = outbox_event(order_id)
+                enqueue_event(cur, OUTBOX_TABLE, topic, payload)
             conn.commit()
             return order_id
+        except Exception:
+            conn.rollback()
+            raise
         finally:
-            cur.close()
+            if cur is not None:
+                cur.close()
             self._db_pool.putconn(conn)
 
     async def get_all(self, limit: int = 20, offset: int = 0) -> List[Dict]:

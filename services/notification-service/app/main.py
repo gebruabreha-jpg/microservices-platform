@@ -1,39 +1,74 @@
 """
-Notification Service - Main Application Entry Point
+Notification Service - Main Application Entry Point.
 
-Uses Dependency Injection Container to wire dependencies.
+Background work (started/stopped by the lifespan handler):
+  - RabbitMQ consumer for the "notifications" queue
+  - DLQ consumer for dead-lettered messages
 """
 
 import os
-from fastapi import FastAPI
-from app.routes.notification_router import router
-from app.container import Container
-from shared.tracing import setup_tracing, flush_telemetry
-from shared.logging import get_logger, log_event
-from middleware import CorrelationIdMiddleware
 
-# Service identity for telemetry
+# Service identity - must be set before importing shared.tracing/metrics, which
+# freeze the OpenTelemetry resource (service.name/version) at import time.
 os.environ.setdefault("SERVICE_NAME", "notification-service")
 os.environ.setdefault("SERVICE_VERSION", "1.0.0")
 os.environ.setdefault("ENVIRONMENT", "development")
 
-# 1. Logger first
+import threading  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+
+from fastapi import FastAPI  # noqa: E402
+
+from app.container import get_container  # noqa: E402
+from app.routes.notification_router import router  # noqa: E402
+from shared.logging import get_logger, log_event  # noqa: E402
+from shared.metrics import setup_metrics_endpoint  # noqa: E402
+from shared.ratelimit import setup_rate_limiting  # noqa: E402
+from shared.tracing import flush_telemetry, setup_tracing  # noqa: E402
+from middleware import CorrelationIdMiddleware  # noqa: E402
+
 logger = get_logger("notification-service")
 
-# Create DI container
-container = Container()
+_consumer_service = None
+_background_threads: list[threading.Thread] = []
 
-# Create app
-app = FastAPI(title="notification-service")
 
-# Middleware
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _consumer_service
+
+    if os.getenv("DISABLE_BACKGROUND_WORKERS") == "1":
+        log_event(logger, "info", "notification-service started (background workers disabled)")
+        yield
+        return
+
+    _consumer_service = get_container().get_notification_service()
+    for target, name in (
+        (_consumer_service.start_consumer, "notifications-consumer"),
+        (_consumer_service.start_dlq_consumer, "dlq-consumer"),
+    ):
+        t = threading.Thread(target=target, name=name, daemon=True)
+        t.start()
+        _background_threads.append(t)
+    log_event(logger, "info", "notification-service started")
+
+    try:
+        yield
+    finally:
+        if _consumer_service is not None:
+            _consumer_service.stop()
+        for t in _background_threads:
+            t.join(timeout=5)
+        flush_telemetry()
+        log_event(logger, "info", "Shutting down notification-service")
+
+
+app = FastAPI(title="notification-service", lifespan=lifespan)
 app.add_middleware(CorrelationIdMiddleware)
-
-# Observability
+setup_rate_limiting(app, logger)
 setup_tracing(app, os.getenv("SERVICE_NAME"))
-
-# Routes
 app.include_router(router)
+setup_metrics_endpoint(app)
 
 
 @app.get("/")
@@ -43,15 +78,9 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "notification-service"}
 
 
 @app.get("/ready")
 async def readiness():
     return {"ready": True}
-
-
-@app.on_event("shutdown")
-def shutdown():
-    log_event(logger, "info", "Shutting down notification-service")
-    flush_telemetry()

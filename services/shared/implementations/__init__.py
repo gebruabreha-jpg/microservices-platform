@@ -22,6 +22,7 @@ from shared.interfaces import (
 )
 from shared.metrics import get_metric
 from shared.logging import get_logger, log_event
+from shared.config import require_env
 
 
 # =============================================================================
@@ -29,16 +30,22 @@ from shared.logging import get_logger, log_event
 # =============================================================================
 
 def create_db_pool() -> pool.ThreadedConnectionPool:
-    """Create PostgreSQL connection pool."""
+    """Create PostgreSQL connection pool.
+
+    Credentials must come from the environment - there is no baked-in default.
+    A genuine connection failure still returns None so callers can degrade.
+    """
+    user = require_env("POSTGRES_USER")
+    password = require_env("POSTGRES_PASSWORD")
     try:
         return pool.ThreadedConnectionPool(
             minconn=1,
-            maxconn=int(os.getenv("POSTGRES_POOL_SIZE", 10)),
+            maxconn=int(os.getenv("POSTGRES_POOL_SIZE", "10")),
             host=os.getenv("POSTGRES_HOST", "postgres"),
-            port=int(os.getenv("POSTGRES_PORT", 5432)),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
             dbname=os.getenv("POSTGRES_DB", "appdb"),
-            user=os.getenv("POSTGRES_USER", "admin"),
-            password=os.getenv("POSTGRES_PASSWORD", "secret"),
+            user=user,
+            password=password,
         )
     except Exception:
         return None
@@ -74,15 +81,15 @@ def create_kafka_producer() -> KafkaProducer:
 
 def get_rabbitmq_connection_factory():
     """Create RabbitMQ connection factory."""
+    user = require_env("RABBITMQ_USER")
+    password = require_env("RABBITMQ_PASS")
+
     def factory():
         return pika.BlockingConnection(
             pika.ConnectionParameters(
                 host=os.getenv("RABBITMQ_HOST", "rabbitmq"),
-                port=5672,
-                credentials=pika.PlainCredentials(
-                    os.getenv("RABBITMQ_USER", "admin"),
-                    os.getenv("RABBITMQ_PASS", "secret"),
-                ),
+                port=int(os.getenv("RABBITMQ_PORT", "5672")),
+                credentials=pika.PlainCredentials(user, password),
             )
         )
     return factory
@@ -138,20 +145,35 @@ class RedisCacheClient(CacheClient):
 # =============================================================================
 
 class KafkaEventPublisher(EventPublisher):
-    """Kafka implementation of EventPublisher."""
+    """Kafka implementation of EventPublisher.
 
-    def __init__(self, kafka_producer: KafkaProducer, circuit_breaker=None):
+    Accepts either a live producer or a ``producer_factory`` so a producer that
+    could not be created at startup (broker still coming up) is built lazily and
+    retried on the next publish.
+    """
+
+    def __init__(self, kafka_producer: KafkaProducer = None, circuit_breaker=None, producer_factory=None):
         self._producer = kafka_producer
+        self._producer_factory = producer_factory
         self._circuit_breaker = circuit_breaker
 
+    def _get_producer(self):
+        if self._producer is None and self._producer_factory is not None:
+            self._producer = self._producer_factory()
+        if self._producer is None:
+            raise RuntimeError("Kafka producer is not available")
+        return self._producer
+
     async def publish(self, topic: str, event: dict) -> None:
+        def _send():
+            producer = self._get_producer()
+            producer.send(topic, event)
+            producer.flush(timeout=5)
+
         if self._circuit_breaker:
-            with self._circuit_breaker:
-                self._producer.send(topic, event)
-                self._producer.flush(timeout=5)
+            self._circuit_breaker.call(_send)
         else:
-            self._producer.send(topic, event)
-            self._producer.flush(timeout=5)
+            _send()
 
 
 class RabbitMQEventPublisher(EventPublisher):
@@ -165,7 +187,10 @@ class RabbitMQEventPublisher(EventPublisher):
         def _publish():
             connection = self._connection_factory()
             channel = connection.channel()
-            channel.queue_declare(queue=queue, durable=True)
+            # Queues/exchanges are provisioned from rabbitmq/definitions.json at
+            # broker boot, so the publisher does not (re)declare them - declaring
+            # "notifications" here without its x-dead-letter-exchange argument
+            # would raise PRECONDITION_FAILED against the pre-declared queue.
             channel.basic_publish(
                 exchange="",
                 routing_key=queue,
@@ -175,8 +200,7 @@ class RabbitMQEventPublisher(EventPublisher):
             connection.close()
 
         if self._circuit_breaker:
-            with self._circuit_breaker:
-                _publish()
+            self._circuit_breaker.call(_publish)
         else:
             _publish()
 

@@ -5,14 +5,13 @@ Uses DI container to get service instances.
 """
 
 from fastapi import APIRouter, Request
-from app.container import Container
+from app.container import get_container
 from app.schema.payment_schema import PaymentCreate, PaymentResponse
 
 router = APIRouter()
 
-# Get service from DI container
-container = Container()
-payment_service = container.get_payment_service()
+# Get service from the process-wide DI container
+payment_service = get_container().get_payment_service()
 
 
 @router.get("/payments", response_model=list[PaymentResponse])

@@ -25,17 +25,39 @@ class Container:
         self.rabbitmq_factory = get_rabbitmq_connection_factory()
         self.circuit_breakers = create_circuit_breakers()
 
+    def _rabbitmq_publisher(self):
+        return RabbitMQEventPublisher(self.rabbitmq_factory, self.circuit_breakers.get("rabbitmq"))
+
     def get_payment_service(self):
         """Create PaymentService with all dependencies injected."""
         from app.service.payment_service import PaymentService
 
         return PaymentService(
             payment_repository=PostgresPaymentRepository(self.db_pool),
-            event_publisher=RabbitMQEventPublisher(
-                self.rabbitmq_factory,
-                self.circuit_breakers.get("rabbitmq"),
-            ),
+            event_publisher=self._rabbitmq_publisher(),
             metrics=get_metric(),
             logger=StructuredLogger("payment-service"),
             health_checker=DatabaseHealthChecker(self.db_pool),
         )
+
+    def get_outbox_poller(self):
+        """Create the outbox poller that relays payment_outbox rows to RabbitMQ."""
+        from shared.outbox import OutboxPoller
+
+        return OutboxPoller(
+            self.db_pool,
+            self._rabbitmq_publisher(),
+            StructuredLogger("payment-service.outbox"),
+            table="payment_outbox",
+        )
+
+
+_container = None
+
+
+def get_container() -> "Container":
+    """Return the process-wide DI container (one DB pool / broker factory per service)."""
+    global _container
+    if _container is None:
+        _container = Container()
+    return _container

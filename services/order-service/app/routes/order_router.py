@@ -5,14 +5,13 @@ Uses DI container to get service instances.
 """
 
 from fastapi import APIRouter, Request
-from app.container import Container
+from app.container import get_container
 from app.schema.order_schema import OrderCreate, OrderResponse
 
 router = APIRouter()
 
-# Get service from DI container
-container = Container()
-order_service = container.get_order_service()
+# Get service from the process-wide DI container
+order_service = get_container().get_order_service()
 
 
 @router.post("/orders", response_model=OrderResponse)

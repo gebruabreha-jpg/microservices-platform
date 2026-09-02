@@ -87,25 +87,28 @@ class OrderService:
             span.set_attribute("order.product_id", order_data.product_id)
             span.set_attribute("correlation_id", correlation_id)
 
+            def build_event(new_order_id):
+                return "orders", {
+                    "order_id": new_order_id,
+                    "customer_id": order_data.customer_id,
+                    "product_id": order_data.product_id,
+                    "quantity": order_data.quantity,
+                    "amount": order_data.amount,
+                    "status": order_data.status,
+                    "correlation_id": correlation_id,
+                }
+
             try:
-                # Database operation
+                # Database write + outbox event, atomically. The "orders" event
+                # is relayed to Kafka by the outbox poller, so it cannot be lost
+                # if the broker is briefly unavailable.
                 with self._tracer.start_as_current_span("db.insert_order") as db_span:
-                    order_id = await self._order_repository.create(order_data)
+                    order_id = await self._order_repository.create(
+                        order_data, outbox_event=build_event
+                    )
                     db_span.set_attribute("order.id", order_id)
 
-                # Publish event
-                with self._tracer.start_as_current_span("kafka.publish_order_created") as kafka_span:
-                    event = {
-                        "order_id": order_id,
-                        "customer_id": order_data.customer_id,
-                        "product_id": order_data.product_id,
-                        "quantity": order_data.quantity,
-                        "amount": order_data.amount,
-                        "status": order_data.status,
-                        "correlation_id": correlation_id,
-                    }
-                    await self._event_publisher.publish("orders", event)
-                    kafka_span.set_attribute("messaging.destination", "orders")
+                _, event = build_event(order_id)
 
                 # Cache operation
                 with self._tracer.start_as_current_span("redis.cache_order") as cache_span:
@@ -118,7 +121,15 @@ class OrderService:
                 self._logger.info("Order created", order_id=order_id, correlation_id=correlation_id)
                 span.set_status(Status(StatusCode.OK))
 
-                return {"id": order_id, "status": order_data.status, "correlation_id": correlation_id}
+                return {
+                    "id": order_id,
+                    "customer_id": order_data.customer_id,
+                    "product_id": order_data.product_id,
+                    "quantity": order_data.quantity,
+                    "amount": order_data.amount,
+                    "status": order_data.status,
+                    "correlation_id": correlation_id,
+                }
 
             except Exception as e:
                 self._order_counter.add(1, {"method": "POST", "endpoint": "/orders", "status": "error"})

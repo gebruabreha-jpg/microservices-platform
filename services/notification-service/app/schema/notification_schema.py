@@ -13,3 +13,4 @@ class NotificationResponse(BaseModel):
     type: str
     order_id: int
     status: str
+    correlation_id: Optional[str] = None

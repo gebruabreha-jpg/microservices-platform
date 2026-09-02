@@ -17,3 +17,4 @@ class OrderResponse(BaseModel):
     quantity: int
     amount: float
     status: str
+    correlation_id: Optional[str] = None

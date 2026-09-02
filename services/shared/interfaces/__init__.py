@@ -6,7 +6,10 @@ following the Dependency Inversion Principle (DIP).
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any
+from typing import Callable, Optional, List, Dict, Any, Tuple
+
+# (new_id) -> (topic, payload): builds an outbox event once the row id is known.
+OutboxEvent = Callable[[int], Tuple[str, dict]]
 
 
 class Repository(ABC):
@@ -27,8 +30,8 @@ class OrderRepository(Repository):
     """Interface for order data access."""
 
     @abstractmethod
-    async def create(self, order_data: Any) -> int:
-        """Create a new order and return its ID."""
+    async def create(self, order_data: Any, outbox_event: Optional[OutboxEvent] = None) -> int:
+        """Create a new order and return its ID, optionally enqueuing an outbox event."""
         ...
 
     @abstractmethod
@@ -55,8 +58,8 @@ class PaymentRepository(Repository):
     """Interface for payment data access."""
 
     @abstractmethod
-    async def create(self, payment_data: Any) -> int:
-        """Create a new payment and return its ID."""
+    async def create(self, payment_data: Any, outbox_event: Optional[OutboxEvent] = None) -> int:
+        """Create a new payment and return its ID, optionally enqueuing an outbox event."""
         ...
 
     @abstractmethod
