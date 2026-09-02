@@ -2,7 +2,24 @@
 Order Service - Main Application Entry Point.
 
 Background work (started/stopped by the lifespan handler):
-  - Outbox poller: relays order_outbox rows to the Kafka "orders" topic
+- Outbox poller: relays order_outbox rows to the Kafka "orders" topic
+
+It assembles and starts the application, while other files contain the actual implementations.
+main.py
+│
+├── creates FastAPI
+│
+├── adds middleware
+│
+├── adds rate limiting
+│
+├── adds tracing
+│
+├── adds routes
+│
+├── adds metrics
+│
+└── starts/stops background workers
 """
 
 import os
@@ -57,7 +74,7 @@ async def lifespan(app: FastAPI):
         flush_telemetry()
         log_event(logger, "info", "Shutting down order-service")
 
-
+#lifespan=lifespanç=When you start and stop, use my lifespan() function.
 app = FastAPI(title="order-service", lifespan=lifespan)
 app.add_middleware(CorrelationIdMiddleware)
 setup_rate_limiting(app, logger)

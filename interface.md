@@ -94,3 +94,26 @@ RabbitMQ → notification-service (consume "notifications" queue) ✅
 notification-service → PostgreSQL (INSERT INTO notifications) ✅
 On failure → RabbitMQ DLQ (dlx exchange → dlq queue) ✅
 
+So the design is basically:-
+main.py → application lifecycle or application lifecycle manager
+container.py → creates/wires dependencies
+router.py → handles HTTP
+service.py → business logic
+repository.py → database access
+outbox poller → background event processing
+
+Current split (this is correct):
+
+┌───────────┬────────────────────────────────────────┬────────────────────────────────────────────────────────┐
+│   Layer   │                  File                  │                         Holds                          │
+├───────────┼────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ Mechanism │ shared/outbox.py                       │ The OutboxPoller class — generic, no service knowledge │
+├───────────┼────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ Wiring    │ app/container.py → get_outbox_poller() │ Which table, which publisher                           │
+├───────────┼────────────────────────────────────────┼────────────────────────────────────────────────────────┤
+│ Lifecycle │ app/main.py lifespan                   │ .run() in a thread, .stop() on shutdown                │
+└───────────┴────────────────────────────────────────┴────────────────────────────────────────────
+
+
+split workers into their own container:-
+Then you add one real file: app/worker.py as a standalone python -m app.worker entrypoint that builds the container, starts the poller + consumers, and blocks. That's a genuine second __main__, not a wrapper. Only do it when you actually run API and workers as separate deployments
