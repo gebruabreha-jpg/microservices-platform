@@ -13,13 +13,11 @@ OutboxEvent = Callable[[int], Tuple[str, dict]]
 
 
 class Repository(ABC):
-    """Base interface for all repositories."""
-
+    """Base interface for all repositories(order, service and notification)."""
     @abstractmethod
     async def create(self, data: Any) -> Any:
         """Create a new record."""
         ...
-
     @abstractmethod
     async def get_all(self, limit: int = 20, offset: int = 0) -> List[Any]:
         """Get all records with pagination."""
