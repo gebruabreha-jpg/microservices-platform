@@ -1,7 +1,6 @@
 fastapi>=0.104.0
 uvicorn>=0.24.0
 psycopg2-binary
-psycopg2-pool
 requests>=2.31.0
 pika>=1.3.0
 kafka-python>=2.0.0

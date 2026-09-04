@@ -40,7 +40,7 @@ class Container:
 
         return OrderService(
             order_repository=PostgresOrderRepository(self.db_pool),
-            cache=RedisCacheClient(self.redis_client),
+            cache=RedisCacheClient(self.redis_client, client_factory=create_redis_client),
             event_publisher=self._kafka_publisher(),
             health_checker=DatabaseHealthChecker(self.db_pool, self.redis_client),
         )

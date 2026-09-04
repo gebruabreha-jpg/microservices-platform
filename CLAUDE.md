@@ -75,8 +75,8 @@ marks `published_at`). This is why a broker being down never loses an event.
 
 `app/routes/*_router.py` (FastAPI, thin) → `app/service/*_service.py` (business
 logic, plain classes, **constructor dependency injection**, depend on ABCs in
-`shared/interfaces`) → `app/repository/*_repository.py` (**raw psycopg2**, not an
-ORM).
+`shared/{repository,cache,events,health}.py`) → `app/repository/*_repository.py`
+(**raw psycopg2**, not an ORM).
 
 Services are injected only the **swappable** dependencies (repository, cache,
 event publisher, health checker) as `shared/*` ABCs. Logging, metrics and
@@ -93,8 +93,7 @@ daemon threads — outbox poller, Kafka/RabbitMQ consumers — unless
 `DISABLE_BACKGROUND_WORKERS=1`), and the `/health` + `/ready` routes (kept in
 `main.py`, not routers, for K8s probes).
 
-`app/model/*_model.py` files are **dead stubs** (leftover SQLAlchemy boilerplate,
-nothing imports them). Ignore them.
+There is no ORM and no model layer — repositories return plain dicts.
 
 ### Shared packages (`services/`, each copied into every image)
 
@@ -147,5 +146,6 @@ is a plain module import.
 
 ## Repo scratch (not authoritative)
 
-`tmp.md`, `tmp1.md`, `tmp2.md`, `zsteps.md`, `shell.md`, `services/rule.md`,
-`z-linux-server/`, `test_*.json` are working notes. `.kilo/worktrees/` holds stale copies — never edit there.
+`docs/scratch/` holds working notes (`tmp*.md`, `zsteps.md`, `shell.md`,
+`interface.md`, `services-rule.md`, curl payloads) — historical, not
+documentation. `.kilo/worktrees/` holds stale copies — never edit there.

@@ -11,6 +11,8 @@ platform/prometheus/prometheus.yml). No collector hop for metrics.
 
 from opentelemetry.sdk.metrics import MeterProvider
 
+from shared.observability.tracing import _resource
+
 _readers = []
 
 # Expose metrics in Prometheus text format via the default prometheus_client
@@ -20,11 +22,8 @@ try:
     from opentelemetry.exporter.prometheus import PrometheusMetricReader
 
     _readers.append(PrometheusMetricReader())
-    _PROMETHEUS_AVAILABLE = True
 except ImportError:  # pragma: no cover - exporter not installed
-    _PROMETHEUS_AVAILABLE = False
-
-from shared.observability.tracing import _resource
+    pass
 
 _meter_provider = MeterProvider(resource=_resource, metric_readers=_readers)
 
