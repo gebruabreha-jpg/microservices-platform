@@ -16,7 +16,7 @@ from opentelemetry.trace import Status, StatusCode
 from shared.events import EventPublisher
 from shared.health import HealthChecker
 from shared.repository import NotificationRepository
-from shared.observability import get_logger, get_metric, get_tracer
+from shared.observability import get_metric, get_service_telemetry
 
 
 class NotificationService:
@@ -32,25 +32,17 @@ class NotificationService:
         self._notification_repository = notification_repository
         self._event_publisher = event_publisher
         self._health_checker = health_checker
-        self._logger = get_logger("notification-service")
-        self._tracer = get_tracer("notification-service")
+        telemetry = get_service_telemetry("notification-service", "notification", "notification")
+        self._logger = telemetry.logger
+        self._tracer = telemetry.tracer
+        self._notification_counter = telemetry.request_counter
+        self._notification_duration = telemetry.request_duration
         # Dedicated event loop for the blocking RabbitMQ consumer thread.
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         # Set on shutdown to break the consumer loops cleanly.
         self._stop = threading.Event()
 
-        metrics = get_metric()
-        self._notification_counter = metrics.create_counter(
-            "notification_requests_total",
-            description="Total notification requests",
-            unit="1",
-        )
-        self._notification_duration = metrics.create_histogram(
-            "notification_request_duration_seconds",
-            description="Notification request duration in seconds",
-            unit="s",
-        )
-        self._dlq_counter = metrics.create_counter(
+        self._dlq_counter = get_metric().create_counter(
             "notification_dlq_total",
             description="Messages sent to DLQ",
             unit="1",

@@ -15,7 +15,7 @@ from opentelemetry.trace import Status, StatusCode
 from shared.events import EventPublisher
 from shared.health import HealthChecker
 from shared.repository import PaymentRepository
-from shared.observability import get_logger, get_metric, get_tracer
+from shared.observability import get_service_telemetry
 from app.schema.payment_schema import PaymentCreate
 
 
@@ -32,20 +32,11 @@ class PaymentService:
         self._payment_repository = payment_repository
         self._event_publisher = event_publisher
         self._health_checker = health_checker
-        self._logger = get_logger("payment-service")
-        self._tracer = get_tracer("payment-service")
-
-        metrics = get_metric()
-        self._payment_counter = metrics.create_counter(
-            "payment_requests_total",
-            description="Total payment requests",
-            unit="1",
-        )
-        self._payment_duration = metrics.create_histogram(
-            "payment_request_duration_seconds",
-            description="Payment request duration in seconds",
-            unit="s",
-        )
+        telemetry = get_service_telemetry("payment-service", "payment", "payment")
+        self._logger = telemetry.logger
+        self._tracer = telemetry.tracer
+        self._payment_counter = telemetry.request_counter
+        self._payment_duration = telemetry.request_duration
 
     async def health_check(self) -> Dict:
         """Check service health."""

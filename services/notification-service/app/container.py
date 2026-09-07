@@ -17,18 +17,22 @@ class Container:
         self.db_pool = create_db_pool()
         self.rabbitmq_connection_factory = get_rabbitmq_connection_factory()
         self.circuit_breakers = create_circuit_breakers()
+        self._notification_service = None
 
     def get_notification_service(self):
-        from app.service.notification_service import NotificationService
+        """Return the process-wide NotificationService singleton (built on first call)."""
+        if self._notification_service is None:
+            from app.service.notification_service import NotificationService
 
-        return NotificationService(
-            notification_repository=PostgresNotificationRepository(self.db_pool),
-            event_publisher=RabbitMQEventPublisher(
-                self.rabbitmq_connection_factory,
-                self.circuit_breakers.get("rabbitmq"),
-            ),
-            health_checker=RabbitMQHealthChecker(self.rabbitmq_connection_factory),
-        )
+            self._notification_service = NotificationService(
+                notification_repository=PostgresNotificationRepository(self.db_pool),
+                event_publisher=RabbitMQEventPublisher(
+                    self.rabbitmq_connection_factory,
+                    self.circuit_breakers.get("rabbitmq"),
+                ),
+                health_checker=RabbitMQHealthChecker(self.rabbitmq_connection_factory),
+            )
+        return self._notification_service
 
 
 _container = None

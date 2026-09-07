@@ -15,7 +15,7 @@ from shared.cache import CacheClient
 from shared.events import EventPublisher
 from shared.health import HealthChecker
 from shared.repository import OrderRepository
-from shared.observability import get_logger, get_metric, get_tracer
+from shared.observability import get_metric, get_service_telemetry
 
 
 class OrderService:
@@ -33,20 +33,13 @@ class OrderService:
         self._cache = cache
         self._event_publisher = event_publisher
         self._health_checker = health_checker
-        self._logger = get_logger("order-service")
-        self._tracer = get_tracer("order-service")
+        telemetry = get_service_telemetry("order-service", "order", "order")
+        self._logger = telemetry.logger
+        self._tracer = telemetry.tracer
+        self._order_counter = telemetry.request_counter
+        self._order_duration = telemetry.request_duration
 
         metrics = get_metric()
-        self._order_counter = metrics.create_counter(
-            "order_requests_total",
-            description="Total order requests",
-            unit="1",
-        )
-        self._order_duration = metrics.create_histogram(
-            "order_request_duration_seconds",
-            description="Order request duration in seconds",
-            unit="s",
-        )
         self._cache_hit_counter = metrics.create_counter(
             "order_cache_hits_total",
             description="Cache hits",

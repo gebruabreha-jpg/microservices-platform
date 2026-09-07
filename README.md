@@ -1,7 +1,7 @@
 # Order Management System
 
 A distributed order management system demonstrating platform and distributed systems patterns.
-
+__init__.py = package entry door; empty or used to expose public functions/classes(can be empty, or it can contain/re-export functions and classes).
 ## Architecture
 
 ```

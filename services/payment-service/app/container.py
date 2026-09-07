@@ -22,18 +22,22 @@ class Container:
         self.db_pool = create_db_pool()
         self.rabbitmq_factory = get_rabbitmq_connection_factory()
         self.circuit_breakers = create_circuit_breakers()
+        self._payment_service = None
 
     def _rabbitmq_publisher(self):
         return RabbitMQEventPublisher(self.rabbitmq_factory, self.circuit_breakers.get("rabbitmq"))
 
     def get_payment_service(self):
-        from app.service.payment_service import PaymentService
+        """Return the process-wide PaymentService singleton (built on first call)."""
+        if self._payment_service is None:
+            from app.service.payment_service import PaymentService
 
-        return PaymentService(
-            payment_repository=PostgresPaymentRepository(self.db_pool),
-            event_publisher=self._rabbitmq_publisher(),
-            health_checker=DatabaseHealthChecker(self.db_pool),
-        )
+            self._payment_service = PaymentService(
+                payment_repository=PostgresPaymentRepository(self.db_pool),
+                event_publisher=self._rabbitmq_publisher(),
+                health_checker=DatabaseHealthChecker(self.db_pool),
+            )
+        return self._payment_service
 
     def get_outbox_poller(self):
         """Relays payment_outbox rows to the RabbitMQ 'notifications' queue."""

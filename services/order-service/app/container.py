@@ -25,6 +25,7 @@ class Container:
         self.redis_client = create_redis_client()
         self.kafka_producer = create_kafka_producer()
         self.circuit_breakers = create_circuit_breakers()
+        self._order_service = None
 
     def _kafka_publisher(self):
         # Pass the factory too so a producer that failed to build at startup is
@@ -36,14 +37,17 @@ class Container:
         )
 
     def get_order_service(self):
-        from app.service.order_service import OrderService
+        """Return the process-wide OrderService singleton (built on first call)."""
+        if self._order_service is None:
+            from app.service.order_service import OrderService
 
-        return OrderService(
-            order_repository=PostgresOrderRepository(self.db_pool),
-            cache=RedisCacheClient(self.redis_client, client_factory=create_redis_client),
-            event_publisher=self._kafka_publisher(),
-            health_checker=DatabaseHealthChecker(self.db_pool, self.redis_client),
-        )
+            self._order_service = OrderService(
+                order_repository=PostgresOrderRepository(self.db_pool),
+                cache=RedisCacheClient(self.redis_client, client_factory=create_redis_client),
+                event_publisher=self._kafka_publisher(),
+                health_checker=DatabaseHealthChecker(self.db_pool, self.redis_client),
+            )
+        return self._order_service
 
     def get_outbox_poller(self):
         """Relays order_outbox rows to Kafka."""
